@@ -81,7 +81,7 @@ def _iflow_name(manifest: dict, path: Path) -> str:
 def _table_row(manifest: dict, path: Path, junit_path: Path) -> str:
     total, passed, failed, errors, skipped = count_junit(junit_path)
     name = _iflow_name(manifest, path)
-    if manifest.get("geracao_pulada"):
+    if manifest.get("generation_skipped"):
         name = f"{name} (generation skipped)"
     return f"| `{name}` | {total} | {passed} | {failed} | {errors} | {skipped} |"
 

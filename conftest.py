@@ -42,7 +42,7 @@ if str(SRC) not in sys.path:
 _counter = itertools.count()
 
 
-def _novo_diretorio(prefixo: str) -> Path:
+def _new_directory(prefix: str) -> Path:
     """
     Create a unique directory under the system temporary root.
 
@@ -53,7 +53,7 @@ def _novo_diretorio(prefixo: str) -> Path:
     base.mkdir(parents=True, exist_ok=True)
 
     for _ in range(100):
-        candidate = base / f"{prefixo}-{os.getpid()}-{next(_counter)}-{uuid.uuid4().hex[:8]}"
+        candidate = base / f"{prefix}-{os.getpid()}-{next(_counter)}-{uuid.uuid4().hex[:8]}"
         try:
             candidate.mkdir()
         except FileExistsError:  # pragma: no cover - unlikely collision
@@ -72,7 +72,7 @@ def tmp_path() -> Path:
     removing temporary directories. The semantics are the same: a new and
     empty `Path` for each test.
     """
-    return _novo_diretorio("t")
+    return _new_directory("t")
 
 
 @pytest.fixture(scope="session")
@@ -84,4 +84,4 @@ def tmp_path_factory() -> Path:
     numbered directories and fails with PermissionError in restricted
     environments.
     """
-    return _novo_diretorio("s")
+    return _new_directory("s")

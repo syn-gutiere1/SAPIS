@@ -255,6 +255,6 @@ def test_cli_missing_file_returns_two(tmp_path: Path):
 def test_cli_allow_suppresses_the_finding(tmp_path: Path):
     path = _write(tmp_path, 'URL = "https://cpi.homolog.interno.com/x"')
 
-    result = _run(str(path), "--permitir", "cpi.homolog.interno.com")
+    result = _run(str(path), "--allow", "cpi.homolog.interno.com")
 
     assert result.returncode == 0

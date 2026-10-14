@@ -149,8 +149,8 @@ jobs:
             --junit "$REPORTS_DIR/uat-junit.xml" \
             --environment uat \
             --commit "${{ github.sha }}" \
-            --ator "${{ github.actor }}" \
-            --tem-testes "${{ steps.exists.outputs.has_tests }}" \
+            --approver "${{ github.actor }}" \
+            --has-tests "${{ steps.exists.outputs.has_tests }}" \
             --output "$REPORTS_DIR/uat-summary.md" || true
 
           if [ ! -s "$REPORTS_DIR/uat-summary.md" ]; then

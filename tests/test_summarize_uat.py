@@ -184,7 +184,7 @@ def test_cli_without_arguments_returns_two():
 
 
 def test_cli_without_tests_does_not_require_junit():
-    result = _run("--tem-testes", "false", "--commit", "a" * 40)
+    result = _run("--has-tests", "false", "--commit", "a" * 40)
 
     assert result.returncode == 0
     assert "No UAT test versioned" in result.stdout

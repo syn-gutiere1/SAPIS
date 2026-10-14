@@ -1,12 +1,12 @@
 [project]
-name = "sap-is-test-hub"
+name = "sapis"
 version = "0.1.0"
-description = "Gerador generico de testes automatizados para iFlows do SAP Integration Suite"
+description = "Automated test generation and execution for SAP Integration Suite iFlows"
 requires-python = ">=3.11"
 
 [tool.pytest.ini_options]
-# O codigo do pipeline vive em src/. Sem isto, o pytest insere o rootdir no
-# sys.path antes do PYTHONPATH e `pipeline` deixa de ser importavel.
+# The pipeline code lives in src/. Without this, pytest inserts the rootdir into
+# sys.path before PYTHONPATH and `pipeline` stops being importable.
 pythonpath = ["src"]
 testpaths = ["tests"]
 addopts = "-ra"

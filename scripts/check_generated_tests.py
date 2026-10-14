@@ -212,13 +212,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("path", help="test_flow.py file to check.")
     parser.add_argument(
-        "--permitir",
+        "--allow",
         action="append",
         default=[],
         help="Extra host to allow (may be repeated).",
     )
     parser.add_argument(
-        "--quieto",
+        "--quiet",
         action="store_true",
         help="Do not print the final explanatory text.",
     )
@@ -233,7 +233,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[ERROR] file not found: {path}", file=sys.stderr)
         return 2
 
-    findings = check(path, {h.lower() for h in args.permitir})
+    findings = check(path, {h.lower() for h in args.allow})
 
     if not findings:
         print(f"OK: no suspicious occurrence in {path.name}")
@@ -243,11 +243,11 @@ def main(argv: list[str] | None = None) -> int:
     for finding in findings:
         print(f"  {finding}")
 
-    if not args.quieto:
+    if not args.quiet:
         print("")
         print("A generated test that touches the real network is a defect: the runner")
         print("has no access to internal hosts and, if the name resolved, the request")
-        print("would go out for real. Fix the test or the prompt; legitimate host -> --permitir.")
+        print("would go out for real. Fix the test or the prompt; legitimate host -> --allow.")
     return 1
 
 

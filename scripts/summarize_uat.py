@@ -86,9 +86,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--junit", default=None, help="Path to uat-junit.xml.")
     parser.add_argument("--environment", default="uat", help="Environment name.")
     parser.add_argument("--commit", default=None, help="SHA of the validated commit.")
-    parser.add_argument("--ator", default=None, help="Who triggered/approved. Default: github.actor.")
+    parser.add_argument("--approver", default=None, help="Who triggered/approved. Default: github.actor.")
     parser.add_argument("--run-url", default=None, help="URL of the workflow run.")
-    parser.add_argument("--tem-testes", default="true", help="'false' when there is no tests/uat.")
+    parser.add_argument("--has-tests", default="true", help="'false' when there is no UAT test.")
     parser.add_argument("--output", default=None, help="Output file (default: stdout).")
     return parser.parse_args(argv)
 
@@ -101,17 +101,15 @@ def main(argv: list[str] | None = None) -> int:
 
     args = _parse_args(argv)
 
-    # `--tem-testes` and `--ator` are part of the CLI interface and keep their
-    # Portuguese names; only the local variables are English.
-    has_tests = args.tem_testes.lower() != "false"
+    has_tests = args.has_tests.lower() != "false"
 
     if not args.junit and has_tests:
-        print("[ERROR] provide --junit (or --tem-testes false).", file=sys.stderr)
+        print("[ERROR] provide --junit (or --has-tests false).", file=sys.stderr)
         return 2
 
     junit = parse_junit(Path(args.junit)) if args.junit else None
 
-    approver = args.ator or os.environ.get("GITHUB_ACTOR")
+    approver = args.approver or os.environ.get("GITHUB_ACTOR")
     if not args.run_url:
         repo = os.environ.get("GITHUB_REPOSITORY")
         run_id = os.environ.get("GITHUB_RUN_ID")
