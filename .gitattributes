@@ -1,0 +1,24 @@
+# Normalize line endings (the iFlow packages are pushed/pulled by SAP Integration
+# Suite and LF keeps diffs readable). Marking files binary prevents Git from
+# appending conflict markers to machine-generated artifacts.
+
+* text=auto eol=lf
+
+*.iflw      text eol=lf
+*.groovy    text eol=lf
+*.gsh       text eol=lf
+*.xslt      text eol=lf
+*.wsdl      text eol=lf
+*.prop      text eol=lf
+*.propdef   text eol=lf
+*.xml       text eol=lf
+*.json      text eol=lf
+*.py        text eol=lf
+*.md        text eol=lf
+*.txt       text eol=lf
+
+*.mmap      binary
+*.zip       binary
+*.png       binary
+*.jpg       binary
+*.pdf       binary

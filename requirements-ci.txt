@@ -1,0 +1,14 @@
+# CI dependencies - NO Streamlit.
+#
+# The pipeline runs headless on a GitHub-hosted runner. Streamlit exists only in
+# the local flow (legacy/requirements-legacy.txt) and must not be added here.
+#
+# `responses` is mandatory: the test code produced by the model imports this
+# package to mock the HTTP endpoints. It was missing from the original
+# requirements.txt, which broke the very first `pytest` on a clean runner.
+
+openai>=1.30.0
+python-dotenv>=1.0.0
+pytest>=8.0.0
+pytest-html>=4.1.1
+responses>=0.25.0

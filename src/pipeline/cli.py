@@ -1,0 +1,343 @@
+#!/usr/bin/env python3
+"""
+cli.py - command line interface for the pipeline.
+
+Replaces the Windows `.bat` automation (`run_tests.bat`, with `pause`,
+`cd ..\\..` and `errorlevel`), which does not run on a Linux runner.
+
+Stable exit codes (contract with the workflow):
+
+    0  success
+    2  invalid configuration or usage
+    3  failure in the call to the LLM gateway
+    4  tests failed
+
+Modes:
+
+    extract   reads the artifact and writes a diagnostic summary
+    generate  reads the artifact, calls the LLM and writes the test artifacts
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import sys
+import time
+from pathlib import Path
+from typing import Any
+
+# Package imports are resolved inside main(), after making sure that
+# `src/` is on sys.path. Without that, `python -m pipeline.cli` only works if the
+# caller has exported PYTHONPATH - and the CLI has to be directly executable.
+
+EXIT_OK = 0
+EXIT_CONFIG = 2
+EXIT_PORTKEY = 3
+EXIT_TESTS = 4
+
+
+def _ensure_src_on_path() -> None:
+    """
+    Makes sure the hub `src/` directory is on sys.path.
+
+    Allows `python -m pipeline.cli` from the repository root without
+    depending on an exported PYTHONPATH.
+    """
+    root = Path(__file__).resolve().parents[2]
+    src = root / "src"
+    if src.is_dir() and str(src) not in sys.path:
+        sys.path.insert(0, str(src))
+        if str(root) not in sys.path:
+            sys.path.insert(0, str(root))
+
+
+def _modules():
+    """
+    Imports the package modules after adjusting sys.path.
+
+    Returns `(extract, portkey, writer)`. The tests access
+    `cli.portkey_mod`, so the names stay assigned at module level on the
+    first call.
+    """
+    global extract_mod, portkey_mod, writer_mod
+
+    if extract_mod is None:
+        _ensure_src_on_path()
+        from . import extract as _extract
+        from . import portkey as _portkey
+        from . import writer as _writer
+
+        extract_mod, portkey_mod, writer_mod = _extract, _portkey, _writer
+
+    return extract_mod, portkey_mod, writer_mod
+
+
+extract_mod = None
+portkey_mod = None
+writer_mod = None
+
+
+def _hash_mapping(mapping: dict[str, str]) -> dict[str, str]:
+    """Individual hash of each script, for the provenance manifest."""
+    return {
+        name: hashlib.sha256(content.encode("utf-8")).hexdigest()
+        for name, content in sorted(mapping.items())
+    }
+
+
+def _sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _load_env_file(path: Path, *, override: bool = False) -> None:
+    """
+    Loads a local `.env`, without overwriting the environment by default.
+
+    CI injects everything through the workflow environment and has no `.env` -
+    this path exists only for local use. Variables already defined take
+    precedence, so that the secret value is never replaced by a file.
+    """
+    if not path.is_file():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if override or key not in os.environ:
+            os.environ[key] = value
+
+
+def _build_manifest(
+    *,
+    iflow_file: Path | None,
+    source: Path,
+    out_dir: Path,
+    plans_dir: Path,
+    result: Any,
+    write_summary: dict,
+    settings: Any,
+    scripts: dict[str, str],
+) -> dict:
+    """Builds the provenance manifest: links test -> commit -> model/prompt."""
+    iflow_name = iflow_file.stem if iflow_file else source.stem
+
+    manifest = {
+        "iflow": iflow_name,
+        "source": str(source),
+        "source_relative": (
+            iflow_file.relative_to(source).as_posix()
+            if iflow_file is not None and iflow_file.is_relative_to(source)
+            else (iflow_file.name if iflow_file else None)
+        ),
+        "iflow_sha256": _sha256_file(iflow_file) if iflow_file else None,
+        "scripts_sha256": _hash_mapping(scripts),
+        "scripts_count": len(scripts),
+        "outputs": {
+            "tests": str(out_dir),
+            "plans": str(plans_dir),
+        },
+        "artifacts": {
+            "scenarios": write_summary["scenarios"],
+            "risks": write_summary["risks"],
+            "testdata_files": write_summary["testdata_files"],
+            "files": write_summary["files"],
+            "rejected": write_summary["rejected"],
+        },
+        "llm": {
+            "model": result.usage.model or settings.model,
+            "base_url": settings.base_url,
+            "temperature": settings.temperature,
+            "language_code": settings.language_code,
+            **result.usage.as_dict(),
+        },
+        "prompt": {
+            "file": str(settings.prompt_file),
+            "sha256": result.prompt_sha256,
+        },
+        "truncated": result.truncated,
+        "attempts": result.attempts,
+        "duration_seconds": round(result.duration_seconds, 3),
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "environment": {
+            "github_run_id": os.environ.get("GITHUB_RUN_ID"),
+            "github_sha": os.environ.get("GITHUB_SHA"),
+            "github_ref": os.environ.get("GITHUB_REF"),
+            "github_repository": os.environ.get("GITHUB_REPOSITORY"),
+        },
+    }
+    return manifest
+
+
+def _copy_plan_artifacts(out_dir: Path, plans_dir: Path) -> list[str]:
+    """
+    Copies the plan artifacts (reviewable in a PR) to `test-plans/`.
+
+    `cases.json`, `risks.json`, `coverage.json` and `raw_llm_output.json` stay
+    versioned; the rest (fixtures and the suite) stays under `tests/`.
+    """
+    plans_dir.mkdir(parents=True, exist_ok=True)
+    copied: list[str] = []
+
+    for name in ("cases.json", "risks.json", "coverage.json"):
+        origin = out_dir / name
+        if origin.is_file():
+            (plans_dir / name).write_text(origin.read_text(encoding="utf-8"), encoding="utf-8")
+            copied.append(name)
+
+    return copied
+
+
+def _cmd_extract(args: argparse.Namespace) -> int:
+    extract_mod, _portkey_mod, _writer_mod = _modules()
+
+    source = Path(args.source)
+    try:
+        flow_xml, scripts, iflow_file = extract_mod.extract(source)
+    except extract_mod.ExtractionError as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        return EXIT_CONFIG
+
+    summary = {
+        "source": str(source),
+        "iflow": iflow_file.name if iflow_file else None,
+        "flow_xml_chars": len(flow_xml),
+        "scripts": {name: len(content) for name, content in sorted(scripts.items())},
+    }
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+    return EXIT_OK
+
+
+def _cmd_generate(args: argparse.Namespace) -> int:
+    extract_mod, portkey_mod, writer_mod = _modules()
+
+    source = Path(args.source)
+    out_dir = Path(args.out)
+    plans_dir = Path(args.plans) if args.plans else out_dir
+
+    # 1) Read the artifact from the repository
+    try:
+        flow_xml, scripts, iflow_file = extract_mod.extract(source)
+    except extract_mod.ExtractionError as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        return EXIT_CONFIG
+
+    # 2) Scrub secrets before they leave the machine
+    flow_xml = extract_mod.scrub(flow_xml)
+    scripts = {name: extract_mod.scrub(content) for name, content in scripts.items()}
+
+    # 3) Configuration
+    try:
+        settings = portkey_mod.Settings.from_env()
+    except portkey_mod.ConfigError as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        return EXIT_CONFIG
+
+    # 4) Call the model
+    print(
+        f"[1/3] Artifact: {iflow_file.name if iflow_file else source} "
+        f"({len(flow_xml)} chars of XML, {len(scripts)} script(s))"
+    )
+    try:
+        result = portkey_mod.analyze(flow_xml, scripts, settings=settings)
+    except portkey_mod.ConfigError as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        return EXIT_CONFIG
+    except Exception as exc:  # noqa: BLE001 - gateway failure becomes exit 3
+        print(f"[ERROR] Failure in the LLM call: {exc}", file=sys.stderr)
+        return EXIT_PORTKEY
+
+    print(f"      model={result.usage.model} attempts={result.attempts} "
+          f"tokens={result.usage.total_tokens}")
+    if result.truncated:
+        print(f"[WARNING] Content truncated before sending: {', '.join(result.truncated)}")
+
+    # 5) Write the artifacts
+    try:
+        write_summary = writer_mod.write_test_package(result.package, out_dir)
+    except writer_mod.WriteError as exc:
+        print(f"[ERROR] Failure writing the artifacts: {exc}", file=sys.stderr)
+        return EXIT_CONFIG
+
+    copied = _copy_plan_artifacts(out_dir, plans_dir)
+
+    print(f"[2/3] Written to {out_dir}:")
+    for name in write_summary["files"]:
+        print(f"      {name}")
+    for name in copied:
+        print(f"      test-plans/{name}")
+    for rejected in write_summary["rejected"]:
+        print(f"[WARNING] Fixture discarded -> {rejected}", file=sys.stderr)
+
+    if not (out_dir / "test_flow.py").is_file():
+        print("[ERROR] The model did not produce test_flow.py; nothing to test.", file=sys.stderr)
+        return EXIT_PORTKEY
+
+    # 6) Provenance manifest
+    manifest = _build_manifest(
+        iflow_file=iflow_file,
+        source=source,
+        out_dir=out_dir,
+        plans_dir=plans_dir,
+        result=result,
+        write_summary=write_summary,
+        settings=settings,
+        scripts=scripts,
+    )
+
+    if args.json_report:
+        report_path = Path(args.json_report)
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        print(f"[3/3] Manifest: {report_path}")
+
+    return EXIT_OK
+
+
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="pipeline",
+        description="Automated test generator for SAP Integration Suite iFlows.",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=("extract", "generate"),
+        default="generate",
+        help="extract: only reads and summarizes the artifact. generate: reads, calls the LLM and writes (default).",
+    )
+    parser.add_argument(
+        "--source",
+        required=True,
+        help="Artifact directory in the repository, .iflw file or .zip package (local use).",
+    )
+    parser.add_argument("--out", default="tests", help="Destination for test_flow.py and testdata/.")
+    parser.add_argument("--plans", default=None, help="Destination for cases/risks/coverage.json.")
+    parser.add_argument("--json-report", default=None, help="Path to manifest.json.")
+    parser.add_argument(
+        "--env-file",
+        default=None,
+        help="Local .env file (local use only; CI injects through the environment).",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv)
+
+    if args.env_file:
+        _load_env_file(Path(args.env_file))
+
+    if args.mode == "extract":
+        return _cmd_extract(args)
+    return _cmd_generate(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,490 @@
+# ---------------------------------------------------------------------------
+# Test generation: from a change in the `.iflw` to an open PR into `main`.
+#
+# Design decisions that are not obvious:
+#
+# 1. ONE self-contained workflow, no `workflow_call`. The old design split the
+#    automation into a hub repository (reusable workflow) and the iFlow
+#    repository (consumer). That split no longer exists: the iFlows, the
+#    pipeline, the harness and the stubs all live in this same repository, so a
+#    reusable workflow called from the same repository would only add an
+#    indirection. Everything is done here.
+#
+# 2. No PAT and no `HUB_READ_TOKEN`. The repository is public, so
+#    `actions/checkout` of the same repository needs no token override, and the
+#    default `GITHUB_TOKEN` is enough for the PR.
+#
+# 3. Generation is GATED on the `.iflw`. The model runs with temperature > 0 and
+#    no seed, so regenerating from an unchanged `.iflw` produces a DIFFERENT
+#    `test_flow.py` for the same input - a diff with no real change, which makes
+#    the PR unreviewable. `scripts/build_matrix.py` exposes `has_iflow_change`
+#    per artifact; the job regenerates only when that flag is set. A change in a
+#    `.groovy` alone still runs the tests that are already versioned, and the
+#    Groovy harness runs the REAL script.
+#
+# 4. The matrix is built from `git diff`, and the artifact paths (`path`,
+#    `artifact_root`) come from the matrix values - this workflow never hardcodes
+#    `src/main/resources/**` or the `.iflw` file name.
+#
+# 5. The two `dorny/test-reporter` steps must use DISTINCT `name:` values. The
+#    reporter publishes a Check Run keyed by that name, and with the same name
+#    the second report OVERWRITES the first: the Python results would silently
+#    replace the Groovy ones (or the other way round) in the Checks tab.
+#
+# MANDATORY PRE-REQUISITE (on a user account, the setting is per repository):
+#
+#   Settings > Actions > General > Workflow permissions
+#     - Read and write permissions
+#     - [x] Allow GitHub Actions to create and approve pull requests
+#
+# Without the second box, `gh pr create` dies with a raw 403/GraphQL error even
+# though `permissions: pull-requests: write` is granted. The `open-pr` job
+# detects that and fails with the path to the setting.
+# ---------------------------------------------------------------------------
+name: Generate tests
+
+on:
+  # `sap-is` is the entry point of the native `Git Push` of SAP Integration
+  # Suite, not a protected branch. `main` is the protected, approved branch and
+  # receives changes only through the PR opened by this workflow.
+  push:
+    branches: [sap-is]
+  workflow_dispatch:
+    inputs:
+      full_scan:
+        description: Ignore the diff and regenerate every tracked iFlow.
+        type: boolean
+        default: false
+
+# The repository default is read-only; the jobs below need to write.
+permissions:
+  contents: write
+  pull-requests: write
+  checks: write
+
+concurrency:
+  # Two runs pushing to `sap-is` at the same time would produce two PRs for the
+  # same branch. The newer run supersedes the older one.
+  group: generate-tests-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Layout of the repository: `CI-CD/iflows/<name>/` is the SAP package (source
+  # of truth) and the three generated trees sit next to it. The path prefixes are
+  # repeated in the job-level `env` below, because a job-level `env` cannot
+  # reference this one; they must stay in sync.
+  # Directory where `open-pr` downloads the artifacts to build the PR body.
+  EVIDENCE_DIR: .evidence
+  PR_BODY: .evidence/pr-body.md
+  # Pinned Groovy 4 distribution: the harness runs the real scripts, so the
+  # runtime version cannot float.
+  GROOVY_VERSION: "4.0.24"
+
+jobs:
+  # -------------------------------------------------------------------------
+  # Which iFlows changed, and which of them need regeneration.
+  # -------------------------------------------------------------------------
+  discover:
+    name: Build the matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      count: ${{ steps.matrix.outputs.count }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          # `build_matrix.py` diffs `before..after`; a shallow clone has no
+          # history to diff against and would silently fall back to a full scan.
+          fetch-depth: 0
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build the matrix of changed iFlows
+        id: matrix
+        env:
+          # On workflow_dispatch there is no `before`; forcing a full scan is
+          # what makes a manual run regenerate everything.
+          BEFORE: ${{ github.event.inputs.full_scan == 'true' && '' || github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          set -uo pipefail
+          mkdir -p .ci
+
+          python scripts/build_matrix.py \
+            --repo . \
+            --repo-name "${{ github.event.repository.name }}" \
+            --before "${BEFORE}" \
+            --after "${AFTER}" \
+            --output .ci/matrix.json \
+            --debug
+
+          COUNT="$(python -c 'import json,sys; print(len(json.load(open(".ci/matrix.json", encoding="utf-8"))))')"
+
+          echo "matrix=$(cat .ci/matrix.json)" >> "$GITHUB_OUTPUT"
+          echo "count=${COUNT}" >> "$GITHUB_OUTPUT"
+          echo "${COUNT} artifact(s) in the matrix"
+
+      - name: Write the matrix to the job summary
+        run: |
+          set -uo pipefail
+          {
+            echo "## Changed iFlows"
+            echo ""
+            echo "| Package | iFlow | Path | \`.iflw\` changed | Changed files |"
+            echo "|---|---|---|---|---|"
+            # One `python -c` per row, so the step does not depend on a heredoc
+            # inside a sub-shell redirection.
+            while read -r ROW; do
+              echo "$ROW"
+            done < <(python -c '
+          import json
+          matrix = json.load(open(".ci/matrix.json", encoding="utf-8"))
+          if not matrix:
+              print("| _(none)_ | - | - | - | - |")
+          for item in matrix:
+              changed = ", ".join("`%s`" % name for name in item["changed_files"]) or "-"
+              flag = "yes" if item["has_iflow_change"] else "no (tests are reused)"
+              print("| `%s` | `%s` | `%s` | %s | %s |" % (item["package"], item["iflow"], item["path"], flag, changed))
+          ')
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # -------------------------------------------------------------------------
+  # Generation, static checks, pytest and the real Groovy scripts.
+  # -------------------------------------------------------------------------
+  generate:
+    name: ${{ matrix.iflow }}
+    needs: discover
+    if: needs.discover.outputs.count != '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    strategy:
+      # One failing iFlow must not cancel the others: each one has its own PR
+      # evidence and its own diagnosis.
+      fail-fast: false
+      # The generation calls an external LLM gateway: 3 at a time keeps the
+      # quota predictable without serializing the run.
+      max-parallel: 3
+      matrix:
+        include: ${{ fromJson(needs.discover.outputs.matrix) }}
+
+    env:
+      # Paths derived from the matrix, never hardcoded. `matrix.artifact_root` is
+      # the directory of the `.iflw` (not a resources root), so the directory of
+      # the Groovy scripts is derived from the changed files themselves in the
+      # harness steps below.
+      SOURCE_DIR: ${{ matrix.path }}
+      TESTS_DIR: CI-CD/tests/${{ matrix.iflow }}
+      PLANS_DIR: CI-CD/test-plans/${{ matrix.iflow }}
+      REPORTS_DIR: CI-CD/reports/${{ matrix.iflow }}
+      ARTIFACT_NAME: generated-tests-${{ matrix.package }}-${{ matrix.iflow }}
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the CI dependencies
+        run: pip install -r requirements-ci.txt
+
+      # --- generation -------------------------------------------------------
+      - name: Generate the test package
+        if: matrix.has_iflow_change
+        env:
+          PORTKEY_AUTH_TOKEN: ${{ secrets.PORTKEY_AUTH_TOKEN }}
+          PORTKEY_BASE_URL: ${{ vars.PORTKEY_BASE_URL }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+          LANGUAGE_CODE: ${{ vars.LANGUAGE_CODE || 'en_US' }}
+          AI_PROMPT_FILE: prompt/prompt_template.txt
+        run: |
+          set -uo pipefail
+          mkdir -p "$TESTS_DIR" "$PLANS_DIR" "$REPORTS_DIR"
+
+          echo "Generating from $SOURCE_DIR (the .iflw changed in this push)."
+          python run.py \
+            --source "$SOURCE_DIR" \
+            --out "$TESTS_DIR" \
+            --plans "$PLANS_DIR" \
+            --json-report "$REPORTS_DIR/manifest.json"
+
+      - name: Explain the skipped generation
+        if: ${{ !matrix.has_iflow_change }}
+        run: |
+          set -uo pipefail
+          echo "::notice::The .iflw of ${{ matrix.iflow }} did not change: the tests already versioned are reused."
+          echo "Generation has temperature > 0 and no seed, so regenerating from an unchanged .iflw would rewrite test_flow.py with equivalent content and make the PR unreviewable. A change in a script is covered by the harness, which runs the real .groovy."
+
+      # A run that did not generate must still have a suite to run; otherwise the
+      # job would report success having tested nothing.
+      - name: Require test_flow.py
+        run: |
+          set -uo pipefail
+          if [ ! -f "$TESTS_DIR/test_flow.py" ]; then
+            echo "::error::No test_flow.py in $TESTS_DIR. The generation did not run (unchanged .iflw with no versioned suite) or it failed; run the workflow manually to generate it."
+            exit 1
+          fi
+          echo "Suite found: $TESTS_DIR/test_flow.py"
+
+      # --- static checks on the generated code ------------------------------
+      - name: Check the generated tests for real network access
+        run: |
+          set -uo pipefail
+          # Exit 1 = findings (network without a mock, internal host, fixed
+          # port). The job must fail: a test that resolves an internal host on an
+          # internet runner is a defect, not a warning.
+          python scripts/check_generated_tests.py "$TESTS_DIR/test_flow.py"
+
+      # --- pytest -----------------------------------------------------------
+      - name: Run pytest
+        id: pytest
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          mkdir -p "$REPORTS_DIR"
+          # A generated suite that imports an undeclared package fails at
+          # collection; the log is kept either way for the summary.
+          timeout 1800 python -m pytest "$TESTS_DIR" -v \
+            --self-contained-html \
+            --html="$REPORTS_DIR/report.html" \
+            --junitxml="$REPORTS_DIR/junit.xml" \
+            2>&1 | tee "$REPORTS_DIR/pytest_logs.txt"
+
+      # --- real Groovy scripts ----------------------------------------------
+      - name: Install JDK 17
+        if: contains(join(matrix.changed_files, ' '), '.groovy')
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # No `groovyc` step: passing `stubs` on the classpath makes Groovy compile
+      # the stubs and the script on demand. `groovyc` would also be a trap on
+      # Windows, where it is a batch file.
+      - name: Install the pinned Groovy distribution
+        if: contains(join(matrix.changed_files, ' '), '.groovy')
+        run: |
+          set -uo pipefail
+          curl -sSL -o "$RUNNER_TEMP/groovy.zip" \
+            "https://archive.apache.org/dist/groovy/${GROOVY_VERSION}/distribution/apache-groovy-binary-${GROOVY_VERSION}.zip"
+          unzip -q "$RUNNER_TEMP/groovy.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/groovy-${GROOVY_VERSION}/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/groovy-${GROOVY_VERSION}/bin/groovy" --version
+
+      - name: Run the Groovy harness against the real scripts
+        id: groovy
+        if: contains(join(matrix.changed_files, ' '), '.groovy')
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          mkdir -p "$REPORTS_DIR"
+
+          # The directory of the scripts changed by this push, derived from the
+          # changed files (matrix.artifact_root is the directory of the `.iflw`,
+          # which is a sibling of `script/`, not a resources root). Python is used
+          # because the filenames may contain spaces: `dirname`/`xargs` would
+          # split them.
+          SCRIPT_DIR="$(python -c '
+          import sys
+          from pathlib import PurePosixPath
+          files = [f for f in sys.argv[1:] if f.endswith(".groovy")]
+          if not files:
+              sys.exit(1)
+          parts = [PurePosixPath(f).parent.parts for f in files]
+          common = [group[0] for group in zip(*parts) if len(set(group)) == 1]
+          print(PurePosixPath(*common).as_posix())
+          ' ${{ join(matrix.changed_files, ' ') }})"
+          echo "SCRIPT_DIR=$SCRIPT_DIR" >> "$GITHUB_ENV"
+
+          if [ -z "$SCRIPT_DIR" ] || [ ! -d "$SCRIPT_DIR" ]; then
+            echo "::error::Could not derive the directory of the changed .groovy scripts."
+            exit 1
+          fi
+          export SCRIPT_DIR
+
+          # The harness requires `--testdata` to exist. When it is missing the
+          # scripts cannot be executed, so say so instead of reporting a green
+          # result for something that never ran.
+          if [ ! -d "$TESTS_DIR/testdata" ]; then
+            mkdir -p "$TESTS_DIR/testdata"
+            echo "::warning::No fixtures in $TESTS_DIR/testdata: the scripts are not validated. Run the harness locally with --snapshot-missing and review the .assert.json."
+          fi
+
+          echo "Scripts: $SCRIPT_DIR"
+          groovy -cp stubs groovy-harness/TestHarness.groovy \
+            --scan-all "$SCRIPT_DIR" \
+            --testdata "$TESTS_DIR/testdata" \
+            --junit "$REPORTS_DIR/junit-groovy.xml" \
+            2>&1 | tee "$REPORTS_DIR/groovy_logs.txt"
+
+      # --- results ----------------------------------------------------------
+      # The names MUST differ: the reporter keys the Check Run by `name`, so two
+      # reports with the same name overwrite each other and one of the two
+      # results disappears from the Checks tab.
+      - name: Publish the pytest results in Checks
+        if: always()
+        continue-on-error: true
+        uses: dorny/test-reporter@v1
+        with:
+          name: "pytest — ${{ matrix.iflow }}"
+          path: ${{ env.REPORTS_DIR }}/junit.xml
+          reporter: java-junit
+          fail-on-error: false
+
+      - name: Publish the Groovy results in Checks
+        if: always() && steps.groovy.outcome != 'skipped'
+        continue-on-error: true
+        uses: dorny/test-reporter@v1
+        with:
+          name: "groovy-harness — ${{ matrix.iflow }}"
+          path: ${{ env.REPORTS_DIR }}/junit-groovy.xml
+          reporter: java-junit
+          fail-on-error: false
+
+      - name: Summary on the run page
+        if: always()
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          python scripts/summarize.py \
+            --manifest "$REPORTS_DIR/manifest.json" \
+            --junit "$REPORTS_DIR/junit.xml" \
+            --logs "$REPORTS_DIR/pytest_logs.txt" \
+            --iflow "${{ matrix.iflow }}" \
+            --artifact-name "$ARTIFACT_NAME" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish the evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          if-no-files-found: warn
+          retention-days: 30
+          path: |
+            ${{ env.REPORTS_DIR }}/**
+            ${{ env.TESTS_DIR }}/**
+            ${{ env.PLANS_DIR }}/**
+            ${{ env.SOURCE_DIR }}/${{ matrix.artifact_root }}/**
+
+      # `continue-on-error` above keeps the reports and the evidence even when
+      # the tests fail; the verdict is applied here, after everything was
+      # published.
+      - name: Fail when the generated tests failed
+        if: steps.pytest.outcome == 'failure'
+        run: |
+          echo "::error::pytest failed for ${{ matrix.iflow }}; see the artifact $ARTIFACT_NAME."
+          exit 1
+
+      - name: Fail when the real Groovy scripts failed
+        if: steps.groovy.outcome == 'failure'
+        run: |
+          echo "::error::The Groovy harness failed for ${{ matrix.iflow }}: a real script raised or an assertion did not hold. See $REPORTS_DIR/junit-groovy.xml."
+          exit 1
+
+  # -------------------------------------------------------------------------
+  # The PR from `sap-is` into `main`, with the generated evidence as the body.
+  # -------------------------------------------------------------------------
+  open-pr:
+    name: Open or update the PR into main
+    needs: [discover, generate]
+    # `always()` is deliberate: the PR must exist even when one iFlow failed, so
+    # that the failure is reviewable in the same place as the change. Only a
+    # discover that found nothing skips this job.
+    if: always() && needs.discover.outputs.count != '0'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download the evidence
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ env.EVIDENCE_DIR }}
+
+      # `git ls-remote` instead of a 403 from the API: this reads which branches
+      # exist without needing the pull-request permission, which makes the
+      # distinction between "no PR to update" and "not allowed to create PRs".
+      - name: Check whether PR creation is permitted
+        id: permission
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          BASE="${{ github.event.repository.default_branch }}"
+          echo "base=${BASE}" >> "$GITHUB_OUTPUT"
+
+          if ! git ls-remote --exit-code --heads origin "$BASE" > /dev/null 2>&1; then
+            echo "::error::The base branch '$BASE' does not exist on the remote; cannot open a PR into it."
+            exit 1
+          fi
+          echo "Base branch: $BASE"
+
+          # Read-only probe. It cannot create anything, so a failure here means
+          # the token cannot even read the PR state.
+          if ! gh api "repos/${{ github.repository }}/pulls?state=open&head=${{ github.repository_owner }}:${{ github.ref_name }}&per_page=1" > /dev/null 2>&1; then
+            echo "::warning::Could not read the pull request state; proceeding to the write."
+          fi
+
+      - name: Build the PR body
+        run: |
+          set -uo pipefail
+          python scripts/write_pr_body.py \
+            --evidence-dir "$EVIDENCE_DIR" \
+            --commit "${{ github.sha }}" \
+            --output "$PR_BODY"
+          echo "PR body: $(wc -l < "$PR_BODY") line(s)"
+
+      - name: Create or update the PR from sap-is into main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          BASE="${{ steps.permission.outputs.base }}"
+          HEAD_REF="${{ github.ref_name }}"
+          TITLE="test: generated test plan for the changed iFlows (${GITHUB_SHA:0:7})"
+
+          # `gh` writes the API error to stderr, and that is what tells apart
+          # "PR already exists" from "PR creation is forbidden".
+          if OUTPUT="$(gh pr create --base "$BASE" --head "$HEAD_REF" \
+                        --title "$TITLE" --body-file "$PR_BODY" 2>&1)"; then
+            echo "$OUTPUT"
+            echo "::notice::PR opened into $BASE."
+            exit 0
+          fi
+
+          echo "gh pr create failed:"
+          echo "$OUTPUT"
+
+          # A run on the same branch updates its PR instead of opening a second
+          # one: `sap-is` has a single open PR at a time.
+          if printf '%s' "$OUTPUT" | grep -qE 'already exists|A pull request already exists|createPullRequest.*already'; then
+            if gh pr edit "$HEAD_REF" --title "$TITLE" --body-file "$PR_BODY"; then
+              echo "::notice::The existing PR was updated."
+              exit 0
+            fi
+            echo "::error::The PR for $HEAD_REF already exists but could not be updated; see the gh output above."
+            exit 1
+          fi
+
+          if printf '%s' "$OUTPUT" | grep -qE 'not permitted to create or approve pull requests|createPullRequest|Resource not accessible by integration|403'; then
+            echo "::error::GitHub refused to create the pull request: this repository does not allow GitHub Actions to create or approve pull requests. Fix it in Settings > Actions > General > Workflow permissions: (1) select 'Read and write permissions'; (2) tick 'Allow GitHub Actions to create and approve pull requests'; (3) save and re-run this workflow. On a user account this setting is per repository, not per organization."
+            echo "Raw answer from the API: $OUTPUT"
+            exit 1
+          fi
+
+          echo "::error::Could not create the PR for another reason; see the gh output above."
+          exit 1

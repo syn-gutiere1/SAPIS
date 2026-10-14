@@ -1,0 +1,45 @@
+# ---------------------------------------------------------------------------
+# Secrets / local environment — NEVER commit
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+
+# ---------------------------------------------------------------------------
+# Generated / ephemeral artifacts
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.pytest_cache/
+stubs_classes/
+
+# Pipeline outputs when run locally
+generated/
+export/
+*.zip
+report.html
+pytest_logs.txt
+
+# Clone/push staging work area used in assisted sessions
+_stage/
+
+# Temporary test run directories. In environments with write restrictions
+# they may not be removable, so they stay ignored as a precaution.
+tmp_root/
+tmp_run_*/
+.pytest_tmp/
+
+# pytest creates these when the cache provider is disabled but the temp
+# directory is not writable. They accumulate one per run.
+pytest-cache-files-*/
+
+# ---------------------------------------------------------------------------
+# System / editor
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+*.log

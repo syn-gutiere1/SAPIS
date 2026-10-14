@@ -1,0 +1,201 @@
+# ---------------------------------------------------------------------------
+# UAT gate: the last stage of the pipeline, after the PR into `main` is merged.
+#
+# This is a single, self-contained workflow. There is no `workflow_call` and no
+# second repository to check out: the iFlows, the generated tests, the scripts
+# and the harness all live in this same repository. `main` is the protected,
+# approved branch; `sap-is` is only the entry point of the native SAP
+# Integration Suite `Git Push`.
+#
+# The human approval gate is `environment: uat` with *required reviewers*: the
+# job PAUSES before any step and only releases the environment secrets after
+# somebody approves. Without it the job would run straight through and the
+# credentials would be exposed to AI-generated code.
+#
+# MANDATORY PRE-REQUISITE (configure BEFORE enabling this workflow):
+#
+#   Settings > Environments > New environment > name: uat
+#     - Required reviewers: add the people who approve UAT
+#     - Deployment branches: Selected branches > main
+#     - Environment secrets: UAT_ENDPOINT, UAT_CLIENT_ID, UAT_CLIENT_SECRET
+#
+# THE TRAP: a workflow that references a NON-EXISTENT environment makes GitHub
+# CREATE it automatically, with no protection at all - and then the job runs
+# with no approval whatsoever. If `uat` does not already exist with required
+# reviewers, this workflow executes real UAT on every merge into `main`.
+# Create the environment first, then enable the workflow.
+#
+# The secrets live on the environment, and not on the repository, precisely so
+# that they do not exist before the approval: a job that does not pass the gate
+# cannot read them at all.
+# ---------------------------------------------------------------------------
+name: UAT (requires approval)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Reason for the manual UAT run.
+        required: false
+        default: "manual run"
+
+# `checks: write` publishes the results in the Checks tab; `contents: write` is
+# what allows creating the Release with the UAT evidence.
+permissions:
+  contents: write
+  checks: write
+
+concurrency:
+  # UAT is sequential: testing two versions at the same time against the same
+  # endpoint produces evidence that cannot be attributed to any commit.
+  group: uat-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  uat:
+    name: UAT on the environment
+    runs-on: ubuntu-latest
+    # This is the gate: the job pauses here awaiting human approval.
+    environment: uat
+    timeout-minutes: 45
+
+    env:
+      UAT_DIR: CI-CD/tests/uat
+      REPORTS_DIR: CI-CD/reports/uat
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the CI dependencies
+        run: pip install -r requirements-ci.txt
+
+      # Fails here, with the path to the setting, instead of letting pytest run
+      # against an empty endpoint and producing a meaningless red result.
+      - name: Verify the environment secrets
+        env:
+          UAT_ENDPOINT: ${{ secrets.UAT_ENDPOINT }}
+          UAT_CLIENT_ID: ${{ secrets.UAT_CLIENT_ID }}
+          UAT_CLIENT_SECRET: ${{ secrets.UAT_CLIENT_SECRET }}
+        run: |
+          set -uo pipefail
+          missing=()
+          [ -n "${UAT_ENDPOINT:-}" ] || missing+=("UAT_ENDPOINT")
+          [ -n "${UAT_CLIENT_ID:-}" ] || missing+=("UAT_CLIENT_ID")
+          [ -n "${UAT_CLIENT_SECRET:-}" ] || missing+=("UAT_CLIENT_SECRET")
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing environment secrets: ${missing[*]}"
+            echo "Configure them in Settings > Environments > uat > Environment secrets."
+            echo "If the environment does not exist, create it with required reviewers first:"
+            echo "a workflow that references a non-existent environment creates it without protection."
+            exit 1
+          fi
+          echo "The 3 secrets of environment 'uat' are set."
+
+      - name: Is there a versioned UAT test?
+        id: exists
+        run: |
+          if [ -d "$UAT_DIR" ] && compgen -G "$UAT_DIR/*.py" > /dev/null; then
+            echo "has_tests=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_tests=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::No test in $UAT_DIR; nothing to run. The gate was approved, but no UAT happened."
+          fi
+
+      - name: Run UAT against the real endpoint
+        id: uat
+        if: steps.exists.outputs.has_tests == 'true'
+        continue-on-error: true
+        env:
+          UAT_ENDPOINT: ${{ secrets.UAT_ENDPOINT }}
+          UAT_CLIENT_ID: ${{ secrets.UAT_CLIENT_ID }}
+          UAT_CLIENT_SECRET: ${{ secrets.UAT_CLIENT_SECRET }}
+        run: |
+          set -o pipefail
+          mkdir -p "$REPORTS_DIR"
+          # UAT touches real systems: the timeout stops an endpoint that never
+          # answers from consuming the whole job.
+          timeout 1800 python -m pytest "$UAT_DIR" -v \
+            --self-contained-html \
+            --html="$REPORTS_DIR/uat-report.html" \
+            --junitxml="$REPORTS_DIR/uat-junit.xml" \
+            2>&1 | tee "$REPORTS_DIR/uat-logs.txt"
+
+      - name: Publish the results in Checks
+        if: always() && steps.exists.outputs.has_tests == 'true'
+        continue-on-error: true
+        uses: dorny/test-reporter@v1
+        with:
+          name: "UAT ${{ github.ref_name }}"
+          path: ${{ env.REPORTS_DIR }}/uat-junit.xml
+          reporter: java-junit
+          fail-on-error: false
+
+      # The summary is written to a file as well as to the Job Summary, because
+      # the same markdown becomes the body of the Release.
+      - name: Summary on the run page
+        if: always()
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          mkdir -p "$REPORTS_DIR"
+          python scripts/summarize_uat.py \
+            --junit "$REPORTS_DIR/uat-junit.xml" \
+            --environment uat \
+            --commit "${{ github.sha }}" \
+            --ator "${{ github.actor }}" \
+            --tem-testes "${{ steps.exists.outputs.has_tests }}" \
+            --output "$REPORTS_DIR/uat-summary.md" || true
+
+          if [ ! -s "$REPORTS_DIR/uat-summary.md" ]; then
+            echo "The summary could not be generated; see the logs above." > "$REPORTS_DIR/uat-summary.md"
+          fi
+          cat "$REPORTS_DIR/uat-summary.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish the evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uat-evidence-${{ github.run_id }}
+          retention-days: 30
+          if-no-files-found: warn
+          path: |
+            ${{ env.REPORTS_DIR }}/**
+            ${{ env.UAT_DIR }}/**
+
+      # A Release only when UAT passed. The artifact expires in 30 days; the UAT
+      # evidence has to last, so it becomes a Release.
+      - name: Attach the evidence to a Release
+        if: steps.uat.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          TAG="uat-${{ github.run_id }}"
+
+          {
+            cat "$REPORTS_DIR/uat-summary.md"
+            echo ""
+            echo "Triggered by @${{ github.actor }}."
+            echo "Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          } > "$REPORTS_DIR/uat-release-notes.md"
+
+          gh release create "$TAG" \
+            "$REPORTS_DIR/uat-report.html" \
+            "$REPORTS_DIR/uat-junit.xml" \
+            "$REPORTS_DIR/uat-logs.txt" \
+            --title "UAT ${{ github.run_number }} — ${GITHUB_SHA:0:7}" \
+            --notes-file "$REPORTS_DIR/uat-release-notes.md" \
+            || echo "::warning::Could not create the Release $TAG. Check whether the tag already exists."
+
+      - name: Fail if UAT failed
+        if: steps.uat.outcome == 'failure'
+        run: |
+          echo "::error::UAT failed. See the artifact uat-evidence-${{ github.run_id }}."
+          exit 1

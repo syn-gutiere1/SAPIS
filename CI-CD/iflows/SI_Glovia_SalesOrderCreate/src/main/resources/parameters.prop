@@ -1,0 +1,9 @@
+#
+#Thu Sep 03 19:09:55 UTC 2026
+BusinessObject=SalesOrderCreate
+Country=
+Glovia_Route2_ReturnSalesOrder=(/p1\:notifications/p1\:Notification/p1\:sObject/p2\:giic_OrderTypeCode__c \= &apos;YCEB&apos;)  or (/p1\:notifications/p1\:Notification/p1\:sObject/p2\:giic_OrderTypeCode__c \= &apos;YREB&apos;)  or  (/p1\:notifications/p1\:Notification/p1\:sObject/p2\:giic_OrderTypeCode__c \= &apos;YRCB&apos;)
+Glovia_Route_SalesOrder=(//giic_OrderTypeCode__c \= &apos;YORB&apos;) or (//giic_OrderTypeCode__c \= &apos;YICB&apos;) or (//giic_OrderTypeCode__c \= &apos;YCTB&apos;) or (//giic_OrderTypeCode__c \= &apos;YFAF&apos;) or (//giic_OrderTypeCode__c \= &apos;YVOS&apos;) or (//giic_OrderTypeCode__c \= &apos;ZRCS&apos;) or (//giic_OrderTypeCode__c \= &apos;ZCRI&apos;) or (//giic_OrderTypeCode__c \= &apos;ZCRO&apos;) or (//giic_OrderTypeCode__c \= &apos;YFDB&apos;)
+Region=
+Sender=Glovia
+TimeStamp=${date\:now\:yyyy-MM-dd HH\:mm\:ss}\u200B\u200B\u200B\u200B\u200B
