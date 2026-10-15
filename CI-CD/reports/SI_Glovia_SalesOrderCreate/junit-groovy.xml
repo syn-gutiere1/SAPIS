@@ -1,38 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="groovy-harness" tests="3" failures="2" errors="0" time="0.122">
-  <testsuite name="GLOVIA_Conditioncheck_Salesorder_Create.groovy" tests="2" failures="2" errors="0" time="0">
-    <testcase classname="GLOVIA_Conditioncheck_Salesorder_Create.groovy" name="GLOVIA_Conditioncheck_Salesorder_Create :: invalid_order_code" time="0.053"><failure message="MultipleCompilationErrorsException: startup failed:
-/home/runner/work/SAPIS/SAPIS/CI-CD/iflows/SI_Glovia_SalesOrderCreate/src/main/resources/script/GLOVIA_Conditioncheck_Salesorder_Create.groovy: 5: unable to resolve class XmlSlurper
- @ line 5, column 15.
-       def xml = new XmlSlurper().parseText(body)
-                 ^
-
-1 error
-">MultipleCompilationErrorsException: startup failed:
-/home/runner/work/SAPIS/SAPIS/CI-CD/iflows/SI_Glovia_SalesOrderCreate/src/main/resources/script/GLOVIA_Conditioncheck_Salesorder_Create.groovy: 5: unable to resolve class XmlSlurper
- @ line 5, column 15.
-       def xml = new XmlSlurper().parseText(body)
-                 ^
-
-1 error
-</failure></testcase>
-    <testcase classname="GLOVIA_Conditioncheck_Salesorder_Create.groovy" name="GLOVIA_Conditioncheck_Salesorder_Create :: valid_order_yorb" time="0.011"><failure message="MultipleCompilationErrorsException: startup failed:
-/home/runner/work/SAPIS/SAPIS/CI-CD/iflows/SI_Glovia_SalesOrderCreate/src/main/resources/script/GLOVIA_Conditioncheck_Salesorder_Create.groovy: 5: unable to resolve class XmlSlurper
- @ line 5, column 15.
-       def xml = new XmlSlurper().parseText(body)
-                 ^
-
-1 error
-">MultipleCompilationErrorsException: startup failed:
-/home/runner/work/SAPIS/SAPIS/CI-CD/iflows/SI_Glovia_SalesOrderCreate/src/main/resources/script/GLOVIA_Conditioncheck_Salesorder_Create.groovy: 5: unable to resolve class XmlSlurper
- @ line 5, column 15.
-       def xml = new XmlSlurper().parseText(body)
-                 ^
-
-1 error
-</failure></testcase>
+<testsuites name="groovy-harness" tests="3" failures="0" errors="0" time="0.239">
+  <testsuite name="GLOVIA_Conditioncheck_Salesorder_Create.groovy" tests="2" failures="0" errors="0" time="0">
+    <testcase classname="GLOVIA_Conditioncheck_Salesorder_Create.groovy" name="GLOVIA_Conditioncheck_Salesorder_Create :: invalid_order_code" time="0.145"></testcase>
+    <testcase classname="GLOVIA_Conditioncheck_Salesorder_Create.groovy" name="GLOVIA_Conditioncheck_Salesorder_Create :: valid_order_yorb" time="0.049"></testcase>
   </testsuite>
   <testsuite name="Interface_Generic_Headers.groovy" tests="1" failures="0" errors="0" time="0">
-    <testcase classname="Interface_Generic_Headers.groovy" name="Interface_Generic_Headers :: payload" time="0.058"></testcase>
+    <testcase classname="Interface_Generic_Headers.groovy" name="Interface_Generic_Headers :: payload" time="0.045"></testcase>
   </testsuite>
 </testsuites>
