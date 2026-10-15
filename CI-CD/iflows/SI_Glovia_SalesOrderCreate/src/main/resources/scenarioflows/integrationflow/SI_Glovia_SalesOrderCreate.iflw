@@ -898,5 +898,5 @@
             </bpmndi:BPMNEdge>
         </bpmndi:BPMNPlane>
     </bpmndi:BPMNDiagram>
-<!-- pipeline validation run 2 -->
+<!-- fixture validation run -->
 </bpmn2:definitions>
