@@ -267,11 +267,11 @@ jobs:
           # The suite writes the marker itself, from a `pytest_sessionfinish` hook in
           # conftest.py. Deriving the verdict in the shell failed before: `tee` masks the
           # status and `PIPESTATUS` was read as 0 for a failing run.
-          PYTEST_FAILURE_MARKER: ${{ env.REPORTS_DIR }}/pytest-failed
+          PYTEST_FAILURE_MARKER: .ci/pytest-failed
         run: |
           set -u
-          mkdir -p "$REPORTS_DIR"
-          rm -f "$REPORTS_DIR/pytest-failed"
+          mkdir -p "$REPORTS_DIR" .ci
+          rm -f ".ci/pytest-failed"
 
           # A generated suite that imports an undeclared package fails at collection;
           # the log is kept either way for the summary.
@@ -283,7 +283,7 @@ jobs:
 
           # The step ends 0: the marker is the signal the rest of the job reads, and the
           # `Fail when ...` step turns it into a red job.
-          if [ -f "$REPORTS_DIR/pytest-failed" ]; then
+          if [ -f ".ci/pytest-failed" ]; then
             echo "::error::pytest failed; see $REPORTS_DIR/pytest_logs.txt"
           else
             echo "pytest passed."
@@ -371,13 +371,14 @@ jobs:
           fi
 
           echo "Scripts: $SCRIPT_DIR"
-          rm -f "$REPORTS_DIR/groovy-failed"
+          mkdir -p .ci
+          rm -f ".ci/groovy-failed"
 
           # The harness writes the marker itself, through HARNESS_FAILURE_MARKER. It is
           # the component that knows the verdict; the shell previously guessed it from
           # `${PIPESTATUS[0]}` and got it wrong in CI, where the harness reported
           # "3 passed, 1 failed" and exited 1 while PIPESTATUS read 0. The guess is gone.
-          export HARNESS_FAILURE_MARKER="$REPORTS_DIR/groovy-failed"
+          export HARNESS_FAILURE_MARKER=".ci/groovy-failed"
           groovy -cp stubs groovy-harness/TestHarness.groovy \
             --scan-all "$SCRIPT_DIR" \
             --testdata "$GROOVY_TESTDATA" \
@@ -386,7 +387,7 @@ jobs:
 
           # The step ends 0: the marker is the signal the rest of the job reads, and the
           # `Fail when ...` step turns it into a red job.
-          if [ -f "$REPORTS_DIR/groovy-failed" ]; then
+          if [ -f ".ci/groovy-failed" ]; then
             echo "::error::The Groovy harness failed; see $REPORTS_DIR/groovy_logs.txt"
           else
             echo "The Groovy harness passed."
@@ -609,7 +610,7 @@ jobs:
           # harness failure reliably and once deleted the suggestions on the very run
           # that produced them.
           rm -f "$REPORTS_DIR/failure_context.md" "$REPORTS_DIR/failure_logs.txt"
-          if [ ! -f "$REPORTS_DIR/pytest-failed" ] && [ ! -f "$REPORTS_DIR/groovy-failed" ]; then
+          if [ ! -f ".ci/pytest-failed" ] && [ ! -f ".ci/groovy-failed" ]; then
             if [ -f "$REPORTS_DIR/ai_fix_suggestions.md" ]; then
               rm -f "$REPORTS_DIR/ai_fix_suggestions.md"
               echo "Removed the stale ai_fix_suggestions.md: this run had no failures."
@@ -691,13 +692,13 @@ jobs:
         if: always()
         run: |
           FAILED=0
-          if [ -f "$REPORTS_DIR/pytest-failed" ]; then
+          if [ -f ".ci/pytest-failed" ]; then
             echo "::error::pytest failed for ${{ matrix.iflow }}; see the artifact $ARTIFACT_NAME."
             FAILED=1
           fi
           # The markers are internal signalling, not evidence. Read here, after the commit
           # step, so they never reach the repository or the artifact.
-          rm -f "$REPORTS_DIR/pytest-failed"
+          rm -f ".ci/pytest-failed"
           [ "$FAILED" -eq 0 ] && echo "pytest did not fail."
           exit "$FAILED"
 
@@ -705,11 +706,11 @@ jobs:
         if: always()
         run: |
           FAILED=0
-          if [ -f "$REPORTS_DIR/groovy-failed" ]; then
+          if [ -f ".ci/groovy-failed" ]; then
             echo "::error::The Groovy harness failed for ${{ matrix.iflow }}: a real script raised or an assertion did not hold. See $REPORTS_DIR/junit-groovy.xml."
             FAILED=1
           fi
-          rm -f "$REPORTS_DIR/groovy-failed"
+          rm -f ".ci/groovy-failed"
           [ "$FAILED" -eq 0 ] && echo "The Groovy harness did not fail."
           exit "$FAILED"
 
