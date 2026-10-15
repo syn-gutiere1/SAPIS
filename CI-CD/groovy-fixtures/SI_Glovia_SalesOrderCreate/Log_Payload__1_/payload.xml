@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Payload for Log_Payload (1).gsh.
+
+  That script reads the body, attaches it to the message log as "Payload" with the
+  content type "text/plain", and returns the message untouched. The body IS the
+  interesting input here, because the assertion checks that it arrives intact in the
+  attachment - the script must not transform it.
+-->
+<notifications>
+  <Notification>
+    <sObject>
+      <giic_OrderTypeCode__c>YORB</giic_OrderTypeCode__c>
+      <Name>SO-2024-001</Name>
+    </sObject>
+  </Notification>
+</notifications>

@@ -11,6 +11,8 @@ class MessageLog {
 
     private final List<Map<String, String>> customHeaderProperties = []
     private final List<String> attachments = []
+    private final Map<String, String> attachmentContent = [:]
+    private final Map<String, String> attachmentContentType = [:]
     private String payload
 
     /** Overload used by the scripts: addCustomHeaderProperty(String, String). */
@@ -25,6 +27,21 @@ class MessageLog {
 
     void addAttachment(String name, String contentType, byte[] content) {
         attachments << name
+        attachmentContentType[name] = contentType
+        attachmentContent[name] = content == null ? null : new String(content, 'UTF-8')
+    }
+
+    /**
+     * The overload the real scripts use to attach a string.
+     *
+     * `Log_Payload (1).gsh` calls `addAttachmentAsString("Payload", body, "text/plain")`.
+     * Without this method the script could not run under the harness at all, so the
+     * attachment content is recorded and exposed for assertions.
+     */
+    void addAttachmentAsString(String name, String content, String contentType) {
+        attachments << name
+        attachmentContentType[name] = contentType
+        attachmentContent[name] = content
     }
 
     void setPayload(String payload) {
@@ -41,6 +58,16 @@ class MessageLog {
 
     List<String> getAttachments() {
         return attachments
+    }
+
+    /** Content of each attachment, keyed by name. */
+    Map<String, String> getAttachmentContent() {
+        return attachmentContent
+    }
+
+    /** Declared content type of each attachment, keyed by name. */
+    Map<String, String> getAttachmentContentType() {
+        return attachmentContentType
     }
 
     /** name->value map, to make the check in the assertions easier. */

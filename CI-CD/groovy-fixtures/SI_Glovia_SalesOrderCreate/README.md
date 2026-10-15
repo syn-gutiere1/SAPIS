@@ -1,11 +1,14 @@
 # Groovy test fixtures — SI_Glovia_SalesOrderCreate
 
-Fixtures for `groovy-harness/TestHarness.groovy`, which executes the **real** `.groovy`
-scripts of this iFlow outside the SAP tenant.
+Fixtures for `groovy-harness/TestHarness.groovy`, which executes the **real** scripts of
+this iFlow outside the SAP tenant.
 
 ## Layout
 
-One folder per script, named exactly like the script without the `.groovy` extension:
+One folder per script, named after the script without its extension and with anything
+outside `[A-Za-z0-9._-]` replaced by `_`. Both `.groovy` and `.gsh` are executed: SAP
+CPI uses either extension for a Groovy script, and scanning only `.groovy` left
+`Log_Payload (1).gsh` with no coverage at all even though the `.iflw` calls it.
 
 ```
 GLOVIA_Conditioncheck_Salesorder_Create/
@@ -18,11 +21,15 @@ Interface_Generic_Headers/
 ├── payload.xml                      body is irrelevant to this script
 ├── payload.inject.json              headers set on the message before execution
 └── payload.assert.json              expects those headers to be written to the log
+
+Log_Payload__1_/                     <- sanitised from `Log_Payload (1).gsh`
+├── payload.xml                      body the script must attach unchanged
+└── payload.assert.json              expects the "Payload" attachment with that content
 ```
 
-If a script has no dedicated folder, the harness falls back to the flat
-`testdata/` directory. In CI the harness runs with `--require-fixtures`, so a
-script without a reviewed fixture fails the job and names it.
+If a script has no dedicated folder, the harness falls back to the flat directory
+holding the fixtures. In CI the harness runs with `--require-fixtures`, so a script
+without a reviewed fixture fails the job and names the folder to create.
 
 ## File conventions
 
@@ -30,7 +37,17 @@ script without a reviewed fixture fails the job and names it.
 |---|---|
 | `<case>.xml` / `<case>.json` | input payload, read as the message body |
 | `<case>.inject.json` | optional: `{"headers": {...}, "properties": {...}}` applied before execution |
-| `<case>.assert.json` | optional: `{"headers": {...}, "body_contains": [...], "log_headers": {...}}` checked after execution |
+| `<case>.assert.json` | optional: the checks below, evaluated after execution |
+
+Checks available in `<case>.assert.json`:
+
+| Key | Meaning |
+|---|---|
+| `headers` | `{name: value}` the script must have set on the message |
+| `body_contains` | substrings the message body must contain |
+| `log_headers` | `{name: value}` written with `addCustomHeaderProperty` |
+| `attachments` | **names** attached with `addAttachmentAsString` |
+| `attachment_contains` | `{attachmentName: substring}` the attached content must contain |
 
 Without an `.assert.json` the test only proves the script runs without throwing.
 
