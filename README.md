@@ -34,18 +34,16 @@ access to credentials before that review.
 |-- scripts/
 |   |-- build_matrix.py             # git diff -> changed iFlows + has_iflow_change
 |   |-- check_generated_tests.py    # static checks on the generated suite
+|   |-- derive_endpoint.py          # reads the HTTP trigger out of the .iflw (unused, see below)
 |   |-- summarize.py                # Job Summary of the test workflow
-|   |-- summarize_uat.py            # Job Summary and Release notes of the UAT gate
 |   `-- write_pr_body.py            # PR body built from the evidence
 |-- groovy-harness/
 |   `-- TestHarness.groovy          # runs the REAL .groovy scripts
 |-- stubs/                          # SAP CPI classes (Message, MessageLog, ...)
-|-- tests/                          # the pipeline's own pytest suite (222 tests)
+|-- tests/                          # the pipeline's own pytest suite (211 tests)
 |-- legacy/                         # original pipeline, historical reference
-|-- docs/, templates/               # empty directories, not tracked by Git
 `-- .github/workflows/
-    |-- generate-tests.yml          # sap-is -> tests -> PR into main
-    `-- uat-gate.yml                # main -> UAT behind a human approval gate
+    `-- generate-tests.yml          # sap-is -> tests -> PR into main
 ```
 
 ### The CI-CD tree
@@ -398,7 +396,14 @@ The workflow runs the checker without either flag, so any finding fails the job.
 
 ## Deriving the trigger endpoint from the artifact
 
-A UAT smoke test needs a URL to call. Asking a human to type a full URL for every
+> **Not wired into any workflow.** This module is kept as groundwork for a possible
+> UAT smoke test, which was deliberately dropped: the pipeline today runs entirely
+> off-network. Nothing in the two active stages calls SAP, and that is intentional.
+> The module is tested and usable by hand; it is simply not part of the automation.
+> A UAT stage would also need the tenant host configured and a way to reach the
+> runtime from a GitHub-hosted runner, which is not granted for free.
+
+A smoke test would need a URL to call. Asking a human to type a full URL for every
 iFlow does not scale and drifts from the artifact as soon as the flow is edited, so
 the per-iFlow part is derived from the `.iflw` itself:
 
@@ -472,23 +477,9 @@ steps, so the reports and the evidence survive a failure. The two `dorny/test-re
 steps must use distinct `name:` values: the reporter keys the Check Run by that name, and
 two reports with the same name overwrite each other in the Checks tab.
 
-### `uat-gate.yml` -- UAT (requires approval)
+### The one operational prerequisite
 
-Triggers on a push to `main` and on manual dispatch. The gate is `environment: uat` with
-required reviewers: the job **pauses before any step** and the environment secrets are
-released only after somebody approves. The secrets live on the environment, not on the
-repository, precisely so that a job that did not pass the gate cannot read them at all.
-`concurrency` is serialised (`cancel-in-progress: false`) because testing two versions at
-the same time against one endpoint produces evidence that cannot be attributed to a
-commit. Evidence is uploaded as an artifact and, only on success, attached to a Release
-tagged `uat-<run_id>`, because the artifact expires in 30 days and UAT evidence has to
-last.
-
-### The two operational prerequisites
-
-Both are real, and both are still yours to configure in the repository settings.
-
-**1. Allow GitHub Actions to create and approve pull requests.**
+**Allow GitHub Actions to create and approve pull requests.**
 Settings > Actions > General > Workflow permissions: select *Read and write permissions*
 and tick *Allow GitHub Actions to create and approve pull requests*. Without the second
 box the `open-pr` job cannot create the PR: `gh pr create` fails even though
@@ -496,16 +487,20 @@ box the `open-pr` job cannot create the PR: `gh pr create` fails even though
 the path to the setting. On a user account this setting is per repository, not per
 organisation.
 
-**2. Create the `uat` environment with required reviewers *before* enabling the UAT
-workflow.** Settings > Environments > New environment, name `uat`, then add required
-reviewers, restrict *Deployment branches* to `main`, and add the environment secrets
-`UAT_ENDPOINT`, `UAT_CLIENT_ID`, `UAT_CLIENT_SECRET`.
+### No stage calls SAP
 
-The order matters, and this is a trap rather than a formality: a workflow that references
-a **nonexistent** environment makes GitHub **create it automatically, with no protection
-at all** -- and then the job runs straight through with no approval. If that happens with
-`uat`, UAT runs on every merge into `main` against the real endpoint, with the credentials
-exposed to AI-generated code.
+Both active stages run off-network, which is the point:
+
+| Stage | Touches SAP? | How it stays offline |
+|---|---|---|
+| Generation and `test_flow.py` | No | the `responses` library intercepts the HTTP calls; the test never resolves a host |
+| Groovy harness | No | the SAP classes are stubbed and a fake `Message` with an injected `messageLogFactory` is handed to the script in-process |
+
+There is no UAT stage, no endpoint call and no SAP credential anywhere in this
+repository. A previous iteration carried a UAT workflow behind a manual approval gate;
+it was removed to keep the pipeline strictly offline. The `derive_endpoint.py` module
+above is what remains of that groundwork, and it is not referenced by either workflow.
+
 
 ---
 
