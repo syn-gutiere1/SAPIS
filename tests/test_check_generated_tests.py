@@ -258,3 +258,147 @@ def test_cli_allow_suppresses_the_finding(tmp_path: Path):
     result = _run(str(path), "--allow", "cpi.homolog.interno.com")
 
     assert result.returncode == 0
+
+
+# ---------------------------------------------------------------------------
+# Mock coverage is scoped to the test that makes the call
+# ---------------------------------------------------------------------------
+
+LEAKY_AFTER_A_MOCKED_TEST = '''
+import requests
+import responses
+
+ENDPOINT = "https://cpi.example.invalid/cxf/Glovia"
+
+
+@responses.activate
+def test_one_is_mocked():
+    responses.add(responses.POST, ENDPOINT, body="ok", status=200)
+    assert requests.post(ENDPOINT, timeout=5).status_code == 200
+
+
+def test_two_reaches_the_network():
+    # No decorator and no registered mock: this goes out for real.
+    assert requests.post(ENDPOINT, timeout=5).status_code == 200
+'''
+
+LEAKY_SESSION_AFTER_A_MOCKED_TEST = '''
+import requests
+import responses
+
+ENDPOINT = "https://cpi.example.invalid/cxf/Glovia"
+
+
+@responses.activate
+def test_one_is_mocked():
+    responses.add(responses.POST, ENDPOINT, body="ok", status=200)
+    assert requests.post(ENDPOINT, timeout=5).status_code == 200
+
+
+def test_two_reaches_the_network():
+    session = requests.Session()
+    assert session.post(ENDPOINT, timeout=5).status_code == 200
+'''
+
+
+def test_a_mock_in_another_test_does_not_cover_this_one(tmp_path: Path):
+    """
+    The defect this scoping fixes: `has_mock` was computed over the whole file, so one
+    `@responses.activate` anywhere cleared every network call in it. A test that posted for
+    real was approved because an unrelated test had a mock.
+    """
+    findings = checker.check(_write(tmp_path, LEAKY_AFTER_A_MOCKED_TEST))
+
+    network = [f for f in findings if f.category == "network"]
+    assert network, "a real call in its own test must be flagged"
+    # Line 16 is the call inside `test_two_reaches_the_network`.
+    assert any(f.line == 16 for f in network)
+
+
+def test_a_mock_in_another_test_does_not_cover_a_session(tmp_path: Path):
+    """Same defect through `requests.Session()`, which `@patch('requests.post')` misses."""
+    findings = checker.check(_write(tmp_path, LEAKY_SESSION_AFTER_A_MOCKED_TEST))
+
+    assert any(f.category == "network" for f in findings)
+
+
+def test_a_mock_in_its_own_test_is_accepted(tmp_path: Path):
+    """The scoping must not flag the ordinary, correct layout."""
+    content = '''
+import requests
+import responses
+
+ENDPOINT = "https://cpi.example.invalid/cxf/Glovia"
+
+
+@responses.activate
+def test_one_is_mocked():
+    responses.add(responses.POST, ENDPOINT, body="ok", status=200)
+    assert requests.post(ENDPOINT, timeout=5).status_code == 200
+
+
+@responses.activate
+def test_two_is_also_mocked():
+    responses.add(responses.POST, ENDPOINT, body="ok", status=200)
+    assert requests.post(ENDPOINT, timeout=5).status_code == 200
+'''
+    findings = checker.check(_write(tmp_path, content))
+
+    assert not any(f.category == "network" for f in findings)
+
+
+def test_a_test_delegating_to_a_mocked_helper_is_accepted(tmp_path: Path):
+    """
+    A helper at module level that carries the mock, called from a test: the call is made on
+    the helper's behalf, inside its mocked body. Flagging this would be a false positive.
+    """
+    content = '''
+import requests
+import responses
+
+ENDPOINT = "https://cpi.example.invalid/cxf/Glovia"
+
+
+@responses.activate
+def _post_it(payload):
+    responses.add(responses.POST, ENDPOINT, body="ok", status=200)
+    return requests.post(ENDPOINT, data=payload, timeout=5)
+
+
+def test_through_the_helper():
+    assert _post_it("<xml/>").status_code == 200
+'''
+    findings = checker.check(_write(tmp_path, content))
+
+    assert not any(f.category == "network" for f in findings)
+
+
+def test_a_test_delegating_to_an_unmocked_helper_is_flagged(tmp_path: Path):
+    """The exemption must not become a loophole: no mock in the helper means a finding."""
+    content = '''
+import requests
+
+ENDPOINT = "https://cpi.example.invalid/cxf/Glovia"
+
+
+def _post_it(payload):
+    return requests.post(ENDPOINT, data=payload, timeout=5)
+
+
+def test_through_the_helper():
+    assert _post_it("<xml/>").status_code == 200
+'''
+    findings = checker.check(_write(tmp_path, content))
+
+    assert any(f.category == "network" for f in findings)
+
+
+def test_a_module_level_call_needs_a_mock_in_the_header(tmp_path: Path):
+    content = '''
+import requests
+
+response = requests.post("https://cpi.example.invalid/x", timeout=5)
+'''
+    findings = checker.check(_write(tmp_path, content))
+
+    assert any(f.category == "network" for f in findings)
