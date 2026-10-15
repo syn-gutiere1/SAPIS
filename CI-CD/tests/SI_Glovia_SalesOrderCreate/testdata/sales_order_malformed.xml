@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns1="http://soap.sforce.com/2005/09/outbound">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <ns1:notifications>
+      <ns1:Notification>
+        <ns1:UnclosedTag>corrupted_payload
+    </ns1:notifications>
+  </soapenv:Body>
+</soapenv:Envelope>
