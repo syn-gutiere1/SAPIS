@@ -1,22 +1,22 @@
 [
   {
-    "risk": "Unresolved externalized parameters {{Glovia_Route_SalesOrder}} and {{Glovia_Route2_ReturnSalesOrder}} in Gateway conditions",
-    "consequence": "Router evaluation will fail at runtime or fall through unconditionally to the default escalation branch, failing legitimate order entries.",
-    "mitigation": "Unit tests assert explicit routing outcomes against each branch condition, and CI validates parameter externalization tables."
+    "risk": "Unmatched routing conditions trigger Escalation End Event (EndEvent_11) resulting in unhandled message drop in OneWay MEP.",
+    "consequence": "Inbound Sales Orders and Return notifications that do not meet explicit router predicates are terminated abruptly without notifying the sender or delivering to Glovia REST receivers.",
+    "mitigation": "Automated scenario TC_GLOVIA_003 asserts that the default route branches to SequenceFlow_110 and produces escalation code 'RoutingConditionNotMet', allowing monitoring alert rules to be verified."
   },
   {
-    "risk": "Message mapping failure on CallActivity_102 due to schema mismatch",
-    "consequence": "Processing halts unexpectedly mid-flight, potentially dropping sales orders without client notification.",
-    "mitigation": "SubProcess_91 is validated to capture mapping exceptions, restore '${property.InputPayload}', log the payload attachment, and trigger EndEvent_95."
+    "risk": "Disconnection of floating elements CallActivity_77 and CallActivity_86 in BPMN model definition.",
+    "consequence": "The validation script GLOVIA_Conditioncheck_Salesorder_Create.groovy and XPath header extraction for OrganizationId are never executed during runtime, potentially leading to incorrect routing or missing downstream parameters.",
+    "mitigation": "Test suite asserts on exact route branch outcomes and identifies disconnected canvas artifacts in coverage analysis so developers can connect or retire dead steps."
   },
   {
-    "risk": "ParallelGateway_74 configured with a single branch without a join gateway",
-    "consequence": "Can cause thread leakage or inconsistent camel exchange completion if future branches are added without aggregation synchronization.",
-    "mitigation": "Assert synchronous exchange completion across single branch execution and check thread boundary timeouts."
+    "risk": "MessageMapping_102 failure due to missing mandatory XML elements in Salesforce outbound notification body.",
+    "consequence": "Uncaught XML transformation exceptions halt order creation for participant Glovia_Get_CreateOrder_Details_REST_Receiver, producing message processing failures.",
+    "mitigation": "TC_GLOVIA_004 verifies that SubProcess_91 captures the failure, reads back ${property.InputPayload} safely via CallActivity_97, attaches it for support analysis via CallActivity_100, and ends cleanly at EndEvent_95."
   },
   {
-    "risk": "Dead/orphaned components CallActivity_86 and CallActivity_77 in BPMN model",
-    "consequence": "XPath extraction of OrganizationId and Groovy check GLOVIA_Conditioncheck_Salesorder_Create are disconnected, preventing business validation.",
-    "mitigation": "Coverage metrics flag disconnected components; tests ensure routing relies strictly on valid XML conditions while warning on unused scripts."
+    "risk": "Parallel Multicast gateway ParallelGateway_74 configured with a single outgoing sequence flow.",
+    "consequence": "Unnecessary thread overhead and architectural drift if additional branches are added without synchronizing join gateways.",
+    "mitigation": "TC_GLOVIA_001 and TC_GLOVIA_002 validate that single-branch execution through SequenceFlow_109 does not cause deadlocks or race conditions."
   }
 ]

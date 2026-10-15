@@ -2,21 +2,27 @@
   "target_coverage_percent": 100,
   "coverage_by_component": {
     "StartEvent_2 (SOAP Inbound)": "100%",
-    "CallActivity_4 (Set Message headers & InputPayload property)": "100%",
-    "ParallelGateway_74 (Multicast)": "100%",
-    "ExclusiveGateway_80 (Router - SalesOrder, Return, Default)": "100%",
-    "CallActivity_102 (Message Mapping Test_Mapping)": "100%",
-    "CallActivity_13 & CallActivity_71 (Interface_Generic_Headers)": "100%",
-    "EndEvent_2 & EndEvent_9 (Message End Events)": "100%",
+    "CallActivity_4 (Set Message Headers Enricher)": "100%",
+    "ParallelGateway_74 (Multicast Gateway)": "100%",
+    "ExclusiveGateway_80 (Router)": "100%",
+    "CallActivity_102 (Message Mapping 1)": "100%",
+    "CallActivity_13 (Call Headers Script 1)": "100%",
+    "CallActivity_71 (Call Headers Script 2)": "100%",
+    "EndEvent_2 (Sales Order Message End)": "100%",
+    "EndEvent_9 (Return Order Message End)": "100%",
     "EndEvent_11 (Escalation End Event)": "100%",
-    "SubProcess_91 (CallActivity_97, CallActivity_100, EndEvent_95)": "100%",
-    "CallActivity_86 & CallActivity_77 (Orphaned in BPMN)": "0%"
+    "SubProcess_91 (Exception Subprocess)": "100%",
+    "CallActivity_97 (Read Payload from Property)": "100%",
+    "CallActivity_100 (Log Payload Script)": "100%",
+    "EndEvent_95 (Error End Event)": "100%",
+    "CallActivity_77 (Groovy Script 2 - Orphaned)": "0%",
+    "CallActivity_86 (Content Modifier - Orphaned)": "0%"
   },
   "uncovered_paths": [
-    "CallActivity_86 (Content Modifier for OrganizationId) and CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) have no inbound or outbound SequenceFlow connectors in the BPMN model definitions."
+    "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) and CallActivity_86 (Content Modifier) are completely disconnected in the BPMN process definition (no incoming or outgoing sequence flows)."
   ],
   "coverage_recommendations": [
-    "Wire CallActivity_86 and CallActivity_77 into the main sequence between CallActivity_4 and ExclusiveGateway_80 so that OrderCodeValid and OrganizationId are evaluated before routing.",
-    "Once connected in BPMN, extend test scenarios to assert 'OrderCodeValid == false' specifically routing to Escalation End."
+    "Either wire CallActivity_86 and CallActivity_77 between CallActivity_4 and ExclusiveGateway_80 to enforce OrderCodeValid validation before routing, or delete the dead artifacts from the iFlow model.",
+    "If CallActivity_77 is connected, introduce dedicated test cases asserting header 'OrderCodeValid' set to 'true' for codes ['YORB', 'YICB', 'POR', 'MNZ', 'PLM'] and 'false' for invalid codes to achieve 100% active artifact coverage."
   ]
 }

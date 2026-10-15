@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <ns1:notifications xmlns:ns1="http://soap.sforce.com/2005/09/outbound">
+      <ns1:Notification>
+        <unclosed-tag>
+      </ns1:Notification>
+    </ns1:notifications>
+  </soapenv:Body>
+</soapenv:Envelope>
