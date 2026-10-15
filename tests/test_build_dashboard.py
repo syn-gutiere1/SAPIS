@@ -106,10 +106,16 @@ def _page(artifacts: dict[str, Path], **overrides) -> str:
         "coverage": build_dashboard._load_json(artifacts["coverage"]),
         "manifest": build_dashboard._load_json(artifacts["manifest"]),
         "junit": build_dashboard.load_junit(artifacts["junit"]),
+        "groovy_junit": None,
         "suggestions": build_dashboard._load_text(artifacts["suggestions"]),
     }
     kwargs.update(overrides)
     return build_dashboard.build_page(**kwargs)
+
+
+def _write(path: Path, content: str) -> Path:
+    path.write_text(content, encoding="utf-8")
+    return path
 
 
 # ---------------------------------------------------------------------------
@@ -243,8 +249,88 @@ def test_missing_everything_says_unavailable(artifacts: dict[str, Path]):
     assert "No risks recorded" in page
     assert "No coverage analysis" in page
     assert "No manifest available" in page
-    assert "No JUnit report available" in page
+    assert "No test report available" in page
     assert "No suggested fixes for this run" in page
+
+
+# ---------------------------------------------------------------------------
+# The two suites are separate verdicts
+# ---------------------------------------------------------------------------
+
+
+def test_both_suites_are_shown_separately(artifacts: dict[str, Path]):
+    """
+    A green generated suite with a red harness is a failed run. Merging them into one
+    number is what let a script that does not even compile read as a passing run.
+    """
+    groovy = build_dashboard.load_junit(
+        _write(
+            artifacts["junit"].parent / "junit-groovy.xml",
+            """<?xml version="1.0" encoding="utf-8"?>
+<testsuites>
+  <testsuite name="groovy" errors="0" failures="1" skipped="0" tests="2" time="0.3">
+    <testcase classname="Rule.groovy" name="case_a">
+      <failure message="expected true, got false"/>
+    </testcase>
+    <testcase classname="Rule.groovy" name="case_b"/>
+  </testsuite>
+</testsuites>
+""",
+        )
+    )
+
+    page = _page(artifacts, groovy_junit=groovy)
+
+    assert "Generated suite (pytest)" in page
+    assert "Groovy harness (real scripts)" in page
+    # The pytest side of the fixture is 3 tests, 1 failure; the harness adds 2/1.
+    assert "authoritative verdict" in page
+    # Overall verdict must be the worse of the two.
+    assert "Verdict: <strong>failed</strong>" in page
+
+
+def test_verdict_passes_only_when_both_are_green(artifacts: dict[str, Path]):
+    green = build_dashboard.load_junit(
+        _write(
+            artifacts["junit"].parent / "junit-groovy-green.xml",
+            """<?xml version="1.0" encoding="utf-8"?>
+<testsuites>
+  <testsuite name="groovy" errors="0" failures="0" skipped="0" tests="2" time="0.3">
+    <testcase classname="Rule.groovy" name="case_a"/>
+  </testsuite>
+</testsuites>
+""",
+        )
+    )
+
+    both_green = build_dashboard.build_page(
+        iflow="FlowA",
+        scenarios=None,
+        risks=None,
+        coverage=None,
+        manifest=None,
+        junit={"tests": 1, "failures": 0, "errors": 0, "skipped": 0, "time": 0.1, "cases": []},
+        groovy_junit=green,
+        suggestions=None,
+    )
+
+    assert "Verdict: <strong>passed</strong>" in both_green
+
+
+def test_missing_harness_report_says_so(artifacts: dict[str, Path]):
+    """A run where the harness did not execute must not imply that it passed."""
+    page = build_dashboard.build_page(
+        iflow="FlowA",
+        scenarios=None,
+        risks=None,
+        coverage=None,
+        manifest=None,
+        junit=build_dashboard.load_junit(artifacts["junit"]),
+        groovy_junit=None,
+        suggestions=None,
+    )
+
+    assert "No report for this suite in the run." in page
 
 
 def test_truncation_is_surfaced(artifacts: dict[str, Path]):

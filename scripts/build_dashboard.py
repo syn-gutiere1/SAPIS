@@ -231,9 +231,13 @@ def _render_coverage(coverage) -> str:
     )
 
 
-def _render_tests(junit: dict | None) -> str:
+def _render_suite(title: str, junit: dict | None, note: str) -> str:
+    """One suite: its counters and its cases."""
     if not junit or not junit["tests"]:
-        return '<p class="muted">No JUnit report available for this run.</p>'
+        return (
+            f"<h4>{_esc(title)}</h4>"
+            f'<p class="muted">No report for this suite in the run.</p>'
+        )
 
     passed = junit["tests"] - junit["failures"] - junit["errors"] - junit["skipped"]
     rows = []
@@ -248,6 +252,8 @@ def _render_tests(junit: dict | None) -> str:
         )
 
     return (
+        f"<h4>{_esc(title)}</h4>"
+        f'<p class="sub">{_esc(note)}</p>'
         f'<div class="stats">'
         f'<div class="stat"><span>{junit["tests"]}</span><label>tests</label></div>'
         f'<div class="stat ok"><span>{passed}</span><label>passed</label></div>'
@@ -257,6 +263,32 @@ def _render_tests(junit: dict | None) -> str:
         f'<div class="stat"><span>{junit["time"]:.2f}s</span><label>time</label></div>'
         f"</div>"
         f"<table class='table tests'><tbody>{''.join(rows)}</tbody></table>"
+    )
+
+
+def _render_tests(junit: dict | None, groovy_junit: dict | None = None) -> str:
+    """
+    Both suites, shown separately.
+
+    They are separate verdicts and must not be merged into one number. The generated
+    suite simulates the flow in Python and can be green while the harness - which
+    compiles and executes the real scripts - is red. Showing only the first is how a
+    broken script reads as a passing run.
+    """
+    if not junit and not groovy_junit:
+        return '<p class="muted">No test report available for this run.</p>'
+
+    return _render_suite(
+        "Generated suite (pytest)",
+        junit,
+        "Simulates the flow's routing and mapping in Python, with HTTP mocked. "
+        "It is AI-generated code and can itself be wrong.",
+    ) + _render_suite(
+        "Groovy harness (real scripts)",
+        groovy_junit,
+        "Compiles and executes the real .groovy and .gsh scripts of the artifact. "
+        "This is the authoritative verdict on a script; a green suite above does not "
+        "clear a red result here.",
     )
 
 
@@ -418,12 +450,13 @@ def build_page(
     manifest,
     junit,
     suggestions: str | None,
+    groovy_junit=None,
 ) -> str:
     """Assemble the whole document."""
     counts = {
         "scenarios": len(scenarios) if isinstance(scenarios, list) else 0,
         "risks": len(risks) if isinstance(risks, list) else 0,
-        "tests": junit["tests"] if junit else 0,
+        "tests": (junit["tests"] if junit else 0) + (groovy_junit["tests"] if groovy_junit else 0),
     }
 
     def tab(target: str, label: str, count: int | None = None) -> str:
@@ -439,7 +472,7 @@ def build_page(
             <p class="sub">Provenance of this run and how the suite performed.</p>
             {_render_provenance(manifest)}
         """),
-        ("tab-tests", "Tests", _render_tests(junit)),
+        ("tab-tests", "Tests", _render_tests(junit, groovy_junit)),
         ("tab-scenarios", "Scenarios", _render_scenarios(scenarios)),
         ("tab-risks", "Risks", _render_risks(risks)),
         ("tab-coverage", "Coverage", _render_coverage(coverage)),
@@ -462,9 +495,13 @@ def build_page(
         for ident, label, inner in panels
     )
 
+    # The verdict is the worst of the two suites: a green generated suite with a red
+    # harness is a failed run, which is the whole reason both are shown.
     verdict = "unknown"
-    if junit and junit["tests"]:
-        verdict = "failed" if (junit["failures"] or junit["errors"]) else "passed"
+    suites = [s for s in (junit, groovy_junit) if s and s["tests"]]
+    if suites:
+        broken = any(s["failures"] or s["errors"] for s in suites)
+        verdict = "failed" if broken else "passed"
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -502,7 +539,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--risks", default=None, help="Path to risks.json.")
     parser.add_argument("--coverage", default=None, help="Path to coverage.json.")
     parser.add_argument("--manifest", default=None, help="Path to manifest.json.")
-    parser.add_argument("--junit", default=None, help="Path to junit.xml.")
+    parser.add_argument("--junit", default=None, help="Path to the pytest junit.xml.")
+    parser.add_argument(
+        "--junit-groovy",
+        default=None,
+        help="Path to the Groovy harness junit-groovy.xml. Shown as its own suite.",
+    )
     parser.add_argument("--suggestions", default=None, help="Path to ai_fix_suggestions.md.")
     parser.add_argument(
         "--output",
@@ -522,6 +564,7 @@ def main(argv: list[str] | None = None) -> int:
         coverage=_load_json(Path(args.coverage) if args.coverage else None),
         manifest=_load_json(Path(args.manifest) if args.manifest else None),
         junit=load_junit(Path(args.junit) if args.junit else None),
+        groovy_junit=load_junit(Path(args.junit_groovy) if args.junit_groovy else None),
         suggestions=_load_text(Path(args.suggestions) if args.suggestions else None),
     )
 
