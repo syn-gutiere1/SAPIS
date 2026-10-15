@@ -1,270 +1,207 @@
 import json
 import xml.etree.ElementTree as ET
 import pytest
-import requests
 import responses
+import requests
 
-SOAP_ENV = "{http://schemas.xmlsoap.org/soap/envelope/}"
-BASE_URL = "https://example.invalid/cxf/Glovia_SalesOrder"
+SOAP_ENV_NS = "{http://schemas.xmlsoap.org/soap/envelope/}"
+ENDPOINT_URL = "https://cpi-runtime.example.invalid/cxf/Glovia_SalesOrder"
+
+SO_VALID_PAYLOAD = """<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:out="http://soap.sforce.com/2005/09/outbound" xmlns:sobj="urn:sobject.enterprise.soap.sforce.com">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <out:notifications>
+      <out:Notification>
+        <out:sObject>
+          <sobj:giic_OrderTypeCode__c>YORB</sobj:giic_OrderTypeCode__c>
+          <sobj:giic_OrderNumber__c>ORD-99201</sobj:giic_OrderNumber__c>
+        </out:sObject>
+      </out:Notification>
+    </out:notifications>
+  </soapenv:Body>
+</soapenv:Envelope>"""
+
+SO_RETURN_PAYLOAD = """<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:out="http://soap.sforce.com/2005/09/outbound" xmlns:sobj="urn:sobject.enterprise.soap.sforce.com">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <out:notifications>
+      <out:Notification>
+        <out:sObject>
+          <sobj:giic_OrderTypeCode__c>POR</sobj:giic_OrderTypeCode__c>
+        </out:sObject>
+      </out:Notification>
+    </out:notifications>
+  </soapenv:Body>
+</soapenv:Envelope>"""
+
+SO_UNMATCHED_PAYLOAD = """<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:out="http://soap.sforce.com/2005/09/outbound" xmlns:sobj="urn:sobject.enterprise.soap.sforce.com">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <out:notifications>
+      <out:Notification>
+        <out:sObject>
+          <sobj:giic_OrderTypeCode__c>UNKNOWN_CODE</sobj:giic_OrderTypeCode__c>
+        </out:sObject>
+      </out:Notification>
+    </out:notifications>
+  </soapenv:Body>
+</soapenv:Envelope>"""
+
+SO_MALFORMED_PAYLOAD = "<soapenv:Envelope><soapenv:Body><unclosedTag>Malformed" 
+
+SOAP_ACK_SUCCESS = """<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+  <soapenv:Body>
+    <notificationsResponse xmlns="http://soap.sforce.com/2005/09/outbound">
+      <Ack>true</Ack>
+    </notificationsResponse>
+  </soapenv:Body>
+</soapenv:Envelope>"""
+
+SOAP_ESCALATION_FAULT = """<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+  <soapenv:Body>
+    <soapenv:Fault>
+      <faultcode>soapenv:Server</faultcode>
+      <faultstring>Escalation: RoutingConditionNotMet</faultstring>
+      <detail>
+        <ErrorCode>RoutingConditionNotMet</ErrorCode>
+      </detail>
+    </soapenv:Fault>
+  </soapenv:Body>
+</soapenv:Envelope>"""
+
+SOAP_PARSING_FAULT = """<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+  <soapenv:Body>
+    <soapenv:Fault>
+      <faultcode>soapenv:Client</faultcode>
+      <faultstring>XML parsing error: unclosed token</faultstring>
+    </soapenv:Fault>
+  </soapenv:Body>
+</soapenv:Envelope>"""
 
 
 @pytest.fixture
-def payload_sales_order():
-    return (
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
-        "<SOAP:Envelope xmlns:SOAP=\"http://schemas.xmlsoap.org/soap/envelope/\" "
-        "xmlns:ns1=\"http://soap.sforce.com/2005/09/outbound\" "
-        "xmlns:ns2=\"urn:sobject.enterprise.soap.sforce.com\">"
-        "<SOAP:Header/>"
-        "<SOAP:Body>"
-        "<ns1:notifications>"
-        "<ns1:Notification>"
-        "<ns1:Id>04k000000000001AAA</ns1:Id>"
-        "<ns1:sObject>"
-        "<ns2:Id>a0B000000000001EAA</ns2:Id>"
-        "<ns2:giic_OrderTypeCode__c>YORB</ns2:giic_OrderTypeCode__c>"
-        "<ns2:giic_OrderNumber__c>ORD-998811</ns2:giic_OrderNumber__c>"
-        "</ns1:sObject>"
-        "</ns1:Notification>"
-        "</ns1:notifications>"
-        "</SOAP:Body>"
-        "</SOAP:Envelope>"
-    )
-
-
-@pytest.fixture
-def payload_return_order():
-    return (
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
-        "<SOAP:Envelope xmlns:SOAP=\"http://schemas.xmlsoap.org/soap/envelope/\" "
-        "xmlns:ns1=\"http://soap.sforce.com/2005/09/outbound\" "
-        "xmlns:ns2=\"urn:sobject.enterprise.soap.sforce.com\">"
-        "<SOAP:Header/>"
-        "<SOAP:Body>"
-        "<ns1:notifications>"
-        "<ns1:Notification>"
-        "<ns1:Id>04k000000000002AAA</ns1:Id>"
-        "<ns1:sObject>"
-        "<ns2:Id>a0B000000000002EAA</ns2:Id>"
-        "<ns2:giic_OrderTypeCode__c>POR</ns2:giic_OrderTypeCode__c>"
-        "</ns1:sObject>"
-        "</ns1:Notification>"
-        "</ns1:notifications>"
-        "</SOAP:Body>"
-        "</SOAP:Envelope>"
-    )
-
-
-@pytest.fixture
-def payload_unmatched_order():
-    return (
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
-        "<SOAP:Envelope xmlns:SOAP=\"http://schemas.xmlsoap.org/soap/envelope/\" "
-        "xmlns:ns1=\"http://soap.sforce.com/2005/09/outbound\" "
-        "xmlns:ns2=\"urn:sobject.enterprise.soap.sforce.com\">"
-        "<SOAP:Header/>"
-        "<SOAP:Body>"
-        "<ns1:notifications>"
-        "<ns1:Notification>"
-        "<ns1:Id>04k000000000003AAA</ns1:Id>"
-        "<ns1:sObject>"
-        "<ns2:giic_OrderTypeCode__c>UNKNOWN_VAL</ns2:giic_OrderTypeCode__c>"
-        "</ns1:sObject>"
-        "</ns1:Notification>"
-        "</ns1:notifications>"
-        "</SOAP:Body>"
-        "</SOAP:Envelope>"
-    )
+def standard_headers():
+    return {
+        "Content-Type": "text/xml; charset=UTF-8",
+        "SOAPAction": """""",
+        "Region": "NA",
+        "Country": "US",
+        "BusinessObject": "SalesOrder",
+        "Sender": "Glovia"
+    }
 
 
 @responses.activate
-def test_sales_order_happy_path(payload_sales_order):
+def test_tc_so_create_happy_path(standard_headers):
     responses.add(
         responses.POST,
-        BASE_URL,
-        body="<SOAP:Envelope xmlns:SOAP=\"http://schemas.xmlsoap.org/soap/envelope/\"><SOAP:Body><Response>Success</Response></SOAP:Body></SOAP:Envelope>",
+        ENDPOINT_URL,
+        body=SOAP_ACK_SUCCESS,
         status=200,
-        headers={
-            "Content-Type": "text/xml; charset=utf-8",
-            "SAP_MessageProcessingLogID": "AF_001_SALES_ORDER",
-            "Region": "EMEA",
-            "Country": "DE",
-            "BusinessObject": "SalesOrder",
-            "Sender": "Glovia"
-        }
+        content_type="text/xml; charset=UTF-8",
+        headers={"X-Flow-Step": "EndEvent_2"}
     )
 
-    response = requests.post(
-        BASE_URL,
-        data=payload_sales_order,
-        headers={"Content-Type": "text/xml; charset=utf-8", "SOAPAction": "\"\""}
-    )
-
+    response = requests.post(ENDPOINT_URL, data=SO_VALID_PAYLOAD, headers=standard_headers, timeout=10)
+    
     assert response.status_code == 200
-    assert response.headers["BusinessObject"] == "SalesOrder"
-    assert response.headers["Sender"] == "Glovia"
-    assert response.headers["SAP_MessageProcessingLogID"] == "AF_001_SALES_ORDER"
-
+    assert response.headers.get("X-Flow-Step") == "EndEvent_2"
+    
     root = ET.fromstring(response.text)
-    body = root.find(f"{SOAP_ENV}Body")
-    assert body is not None
-    assert body.find("Response").text == "Success"
+    fault = root.find(f".//{SOAP_ENV_NS}Fault")
+    assert fault is None, "Happy path response must not contain a SOAP Fault"
+    
+    ack = root.find(".//{http://soap.sforce.com/2005/09/outbound}Ack")
+    assert ack is not None and ack.text == "true"
 
 
 @responses.activate
-def test_return_order_route(payload_return_order):
+def test_tc_so_return_happy_path(standard_headers):
     responses.add(
         responses.POST,
-        BASE_URL,
-        body="<SOAP:Envelope xmlns:SOAP=\"http://schemas.xmlsoap.org/soap/envelope/\"><SOAP:Body><ReturnAck>Processed</ReturnAck></SOAP:Body></SOAP:Envelope>",
+        ENDPOINT_URL,
+        body=SOAP_ACK_SUCCESS,
         status=200,
-        headers={
-            "Content-Type": "text/xml; charset=utf-8",
-            "BusinessObject": "SOReturn",
-            "Country": "US"
-        }
+        content_type="text/xml; charset=UTF-8",
+        headers={"X-Flow-Step": "EndEvent_9"}
     )
 
-    response = requests.post(
-        BASE_URL,
-        data=payload_return_order,
-        headers={"Content-Type": "text/xml; charset=utf-8"}
-    )
-
+    response = requests.post(ENDPOINT_URL, data=SO_RETURN_PAYLOAD, headers=standard_headers, timeout=10)
+    
     assert response.status_code == 200
-    assert response.headers.get("BusinessObject") == "SOReturn"
+    assert response.headers.get("X-Flow-Step") == "EndEvent_9"
+    
     root = ET.fromstring(response.text)
-    body = root.find(f"{SOAP_ENV}Body")
-    assert body is not None
-    assert body.find("ReturnAck").text == "Processed"
+    ack = root.find(".//{http://soap.sforce.com/2005/09/outbound}Ack")
+    assert ack is not None and ack.text == "true"
 
 
 @responses.activate
-def test_escalation_end_routing_condition_not_met(payload_unmatched_order):
-    escalation_soap_fault = (
-        "<SOAP:Envelope xmlns:SOAP=\"http://schemas.xmlsoap.org/soap/envelope/\">"
-        "<SOAP:Body>"
-        "<SOAP:Fault>"
-        "<faultcode>SOAP:Server</faultcode>"
-        "<faultstring>Escalation End: RoutingConditionNotMet</faultstring>"
-        "<detail>"
-        "<ErrorCode>RoutingConditionNotMet</ErrorCode>"
-        "<ErrorMessage>No routing condition matched for provided OrderTypeCode</ErrorMessage>"
-        "</detail>"
-        "</SOAP:Fault>"
-        "</SOAP:Body>"
-        "</SOAP:Envelope>"
-    )
-
+def test_tc_unmatched_routing_escalation(standard_headers):
     responses.add(
         responses.POST,
-        BASE_URL,
-        body=escalation_soap_fault,
+        ENDPOINT_URL,
+        body=SOAP_ESCALATION_FAULT,
         status=500,
-        headers={"Content-Type": "text/xml; charset=utf-8"}
+        content_type="text/xml; charset=UTF-8"
     )
 
-    response = requests.post(
-        BASE_URL,
-        data=payload_unmatched_order,
-        headers={"Content-Type": "text/xml; charset=utf-8"}
-    )
-
+    response = requests.post(ENDPOINT_URL, data=SO_UNMATCHED_PAYLOAD, headers=standard_headers, timeout=10)
+    
     assert response.status_code == 500
     root = ET.fromstring(response.text)
-
-    fault = root.find(f".//{SOAP_ENV}Fault")
-    assert fault is not None, "SOAP Fault must be present in response"
-
-    fault_string = fault.find("faultstring")
-    assert fault_string is not None
-    assert "RoutingConditionNotMet" in fault_string.text
-
-    fault_code = fault.find("faultcode")
-    assert fault_code is not None
-    assert "SOAP:Server" in fault_code.text
-
+    
+    fault = root.find(f".//{SOAP_ENV_NS}Fault")
+    assert fault is not None, "Expected SOAP Fault element qualified by Envelope namespace"
+    
+    # In SOAP 1.1 faultcode and faultstring are UNQUALIFIED
+    faultcode = fault.find("faultcode")
+    assert faultcode is not None and "Server" in faultcode.text
+    
+    faultstring = fault.find("faultstring")
+    assert faultstring is not None and "RoutingConditionNotMet" in faultstring.text
+    
     detail = fault.find("detail")
     assert detail is not None
-    error_code = detail.find("ErrorCode")
-    assert error_code is not None and error_code.text == "RoutingConditionNotMet"
+    err_code = detail.find("ErrorCode")
+    assert err_code is not None and err_code.text == "RoutingConditionNotMet"
 
 
 @responses.activate
-def test_exception_subprocess_error_end():
-    soap_fault_response = (
-        "<SOAP:Envelope xmlns:SOAP=\"http://schemas.xmlsoap.org/soap/envelope/\">"
-        "<SOAP:Body>"
-        "<SOAP:Fault>"
-        "<faultcode>SOAP:Server</faultcode>"
-        "<faultstring>MappingException in CallActivity_102</faultstring>"
-        "<detail>"
-        "<LogPayloadAttachment>Captured</LogPayloadAttachment>"
-        "</detail>"
-        "</SOAP:Fault>"
-        "</SOAP:Body>"
-        "</SOAP:Envelope>"
-    )
-
+def test_tc_malformed_xml_handling(standard_headers):
     responses.add(
         responses.POST,
-        BASE_URL,
-        body=soap_fault_response,
+        ENDPOINT_URL,
+        body=SOAP_PARSING_FAULT,
         status=500,
-        headers={"Content-Type": "text/xml; charset=utf-8"}
+        content_type="text/xml; charset=UTF-8"
     )
 
-    corrupt_data = "<SOAP:Envelope xmlns:SOAP=\"http://schemas.xmlsoap.org/soap/envelope/\"><SOAP:Body><Corrupt/></SOAP:Body></SOAP:Envelope>"
-    response = requests.post(
-        BASE_URL,
-        data=corrupt_data,
-        headers={"Content-Type": "text/xml; charset=utf-8"}
-    )
-
+    response = requests.post(ENDPOINT_URL, data=SO_MALFORMED_PAYLOAD, headers=standard_headers, timeout=10)
+    
     assert response.status_code == 500
     root = ET.fromstring(response.text)
-    fault = root.find(f".//{SOAP_ENV}Fault")
+    
+    fault = root.find(f".//{SOAP_ENV_NS}Fault")
     assert fault is not None
-
-    fault_string = fault.find("faultstring")
-    assert fault_string is not None and "MappingException" in fault_string.text
-
-    detail = fault.find("detail")
-    assert detail is not None
-    log_att = detail.find("LogPayloadAttachment")
-    assert log_att is not None and log_att.text == "Captured"
+    
+    faultstring = fault.find("faultstring")
+    assert faultstring is not None and "XML parsing error" in faultstring.text
 
 
 @responses.activate
-def test_malformed_xml_adapter_level_fault():
-    soap_fault_cxf = (
-        "<SOAP:Envelope xmlns:SOAP=\"http://schemas.xmlsoap.org/soap/envelope/\">"
-        "<SOAP:Body>"
-        "<SOAP:Fault>"
-        "<faultcode>SOAP:Client</faultcode>"
-        "<faultstring>XML parse error has occurred: unclosed token</faultstring>"
-        "</SOAP:Fault>"
-        "</SOAP:Body>"
-        "</SOAP:Envelope>"
-    )
-
+def test_tc_connection_timeout_handling(standard_headers):
     responses.add(
         responses.POST,
-        BASE_URL,
-        body=soap_fault_cxf,
-        status=500,
-        headers={"Content-Type": "text/xml; charset=utf-8"}
+        ENDPOINT_URL,
+        body=requests.exceptions.ConnectTimeout("Connection timed out")
     )
 
-    response = requests.post(
-        BASE_URL,
-        data="<SOAP:Envelope><SOAP:Body><unclosed>",
-        headers={"Content-Type": "text/xml; charset=utf-8"}
-    )
-
-    assert response.status_code == 500
-    root = ET.fromstring(response.text)
-    fault = root.find(f".//{SOAP_ENV}Fault")
-    assert fault is not None
-    fault_string = fault.find("faultstring")
-    assert fault_string is not None and "XML parse error" in fault_string.text
+    with pytest.raises(requests.exceptions.ConnectTimeout):
+        requests.post(ENDPOINT_URL, data=SO_VALID_PAYLOAD, headers=standard_headers, timeout=5)

@@ -1,37 +1,37 @@
 [
   {
-    "id": "TC_GLOVIA_001",
-    "name": "Standard Sales Order Processing (Happy Path)",
-    "trigger": "Inbound SOAP message with valid Sales Order payload (giic_OrderTypeCode__c = 'YORB')",
-    "expected_outcome": "Message routes to SalesOrder path, completes Test_Mapping, invokes Interface_Generic_Headers, and terminates successfully at EndEvent_2 with HTTP 202/200.",
-    "validates": "CallActivity_4 (Property & Header initialization), ExclusiveGateway_80 (Routing condition SalesOrder), CallActivity_102 (Mapping), CallActivity_13 (Generic Headers), EndEvent_2"
+    "id": "TC_SO_CREATE_01",
+    "name": "Standard Sales Order Processing - Route to Create Order",
+    "trigger": "Inbound SOAP request containing standard sales order notification (e.g. OrderTypeCode YORB)",
+    "expected_outcome": "HTTP 200/202 SOAP Response; message mapped via Test_Mapping and generic logging headers configured",
+    "validates": "ExclusiveGateway_80 evaluation of Glovia_Route_SalesOrder, CallActivity_102 mapping execution, and CallActivity_13 header enrichment leading to EndEvent_2"
   },
   {
-    "id": "TC_GLOVIA_002",
-    "name": "Sales Order Return Processing (Branch Route)",
-    "trigger": "Inbound SOAP message matching SO Return criteria (giic_OrderTypeCode__c = 'POR')",
-    "expected_outcome": "Message routes to SO Return branch, invokes CallActivity_71 (Interface_Generic_Headers), and terminates at EndEvent_9.",
-    "validates": "ExclusiveGateway_80 (Condition Glovia_Route2_ReturnSalesOrder), CallActivity_71, EndEvent_9"
+    "id": "TC_SO_RETURN_02",
+    "name": "Sales Order Return Processing - Route to Return Flow",
+    "trigger": "Inbound SOAP request containing return order notification (e.g. OrderTypeCode POR)",
+    "expected_outcome": "HTTP 200/202 SOAP Response; bypasses message mapping, logs return order headers via CallActivity_71 to EndEvent_9",
+    "validates": "ExclusiveGateway_80 evaluation of Glovia_Route2_ReturnSalesOrder branch and CallActivity_71 header enrichment"
   },
   {
-    "id": "TC_GLOVIA_003",
-    "name": "Routing Condition Not Met (Escalation End)",
-    "trigger": "Inbound SOAP message with unmatched order type code (e.g., 'UNKNOWN_TYPE')",
-    "expected_outcome": "Message takes default route SequenceFlow_110 to EndEvent_11, triggering Escalation with ErrorCode 'RoutingConditionNotMet'. SOAP Fault returned to caller.",
-    "validates": "ExclusiveGateway_80 (Default route fallback), EndEvent_11 (EscalationEndEvent handling)"
+    "id": "TC_ROUTER_DEFAULT_ESCALATION_03",
+    "name": "Unmatched Order Type - Default Route Escalation",
+    "trigger": "Inbound SOAP request containing unrecognized OrderTypeCode not matching SalesOrder or SO Return rules",
+    "expected_outcome": "SOAP 1.1 Fault returned to caller with faultstring containing Escalation and ErrorCode RoutingConditionNotMet",
+    "validates": "ExclusiveGateway_80 default path (SequenceFlow_110) triggering EscalationEndEvent EndEvent_11"
   },
   {
-    "id": "TC_GLOVIA_004",
-    "name": "Mapping Failure & Exception Subprocess Handling",
-    "trigger": "Inbound SOAP payload with corrupt XML data causing runtime failure in Message Mapping 1",
-    "expected_outcome": "SubProcess_91 intercepts error via StartEvent_92, CallActivity_97 restores body from ${property.InputPayload}, CallActivity_100 attaches log, and EndEvent_95 terminates with Error status.",
-    "validates": "SubProcess_91, CallActivity_97 (Payload restoration), CallActivity_100 (Log_Payload.gsh), EndEvent_95 (Error End Event)"
+    "id": "TC_MAPPING_FAILURE_EX_SUBPROCESS_04",
+    "name": "Mapping Execution Failure - Exception Subprocess Handling",
+    "trigger": "Inbound SOAP request with missing mandatory fields causing mapping exception during CallActivity_102",
+    "expected_outcome": "Execution routed to SubProcess_91; original InputPayload restored from exchange property, logged via Log_Payload.gsh, and aborted via EndEvent_95",
+    "validates": "SubProcess_91 execution, CallActivity_97 payload restoration from ${property.InputPayload}, and CallActivity_100 logging"
   },
   {
-    "id": "TC_GLOVIA_005",
-    "name": "Malformed SOAP Envelope / CXF Inbound Validation",
-    "trigger": "HTTP POST with invalid XML structure or unclosed SOAP Envelope tags",
-    "expected_outcome": "Inbound CXF SOAP runtime raises CXF SOAP Fault without initiating process body execution.",
-    "validates": "Inbound SOAP CXF adapter protocol compliance, XML well-formedness check"
+    "id": "TC_MALFORMED_XML_05",
+    "name": "Malformed XML Envelope Inbound Handling",
+    "trigger": "Inbound HTTP POST containing non-parseable XML or invalid SOAP Envelope",
+    "expected_outcome": "HTTP 500 SOAP Fault indicating XML parsing failure with unqualified faultcode and faultstring elements",
+    "validates": "Inbound SOAP adapter validation at MessageFlow_114 and CXF robust parsing boundary"
   }
 ]
