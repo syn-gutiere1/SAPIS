@@ -1,22 +1,17 @@
 [
   {
-    "risk": "Unattached Process Elements (Dead Code)",
-    "consequence": "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) and CallActivity_86 (Content Modifier for OrganizationId) exist in the BPMN model but have no sequence flow connections. Expected validations or validations for OrderCodeValid are not executed during runtime, potentially routing invalid orders.",
-    "mitigation": "Automated pipeline tests verify that routing decisions depend directly on explicit XML elements or externalized parameters. A lint check flags unconnected nodes in CI before deployment."
+    "risk": "Silent message termination on unhandled routing exceptions",
+    "consequence": "Messages that do not meet Glovia_Route_SalesOrder or Glovia_Route2_ReturnSalesOrder land on Escalation End (EndEvent_11) with ErrorCode 'RoutingConditionNotMet'. If sender does not handle SOAP Faults, sales orders are lost without notice.",
+    "mitigation": "Suite validates TC_ROUTER_DEFAULT_ESCALATION_03 asserting SOAP Fault return with 'RoutingConditionNotMet' error code; monitoring alarms must track Escalated message instances in CPI."
   },
   {
-    "risk": "Escalation EndEvent silently halting message delivery",
-    "consequence": "EndEvent_11 raises an escalation 'RoutingConditionNotMet'. Because returnExceptionToSender is set to false in collaboration properties, the sender receives a normal acknowledgment while the message stops without error escalation or receiver dispatch.",
-    "mitigation": "TC_GLOVIA_003 specifically checks the escalation path and asserts that the escalation code is logged in the Message Processing Log (MPL) to trigger alerting."
+    "risk": "Property loss on exception subprocess body overwrite",
+    "consequence": "If CallActivity_97 attempts to restore InputPayload when the property was never initialized (e.g. failure at CallActivity_4), the message payload becomes empty null string in Log_Payload.gsh.",
+    "mitigation": "Set Message headers (CallActivity_4) is verified as the immediate step after MessageStartEvent to guarantee property 'InputPayload' instantiation before routing or mapping."
   },
   {
-    "risk": "Payload Loss during Mapping Failures",
-    "consequence": "If Message Mapping fails due to unexpected XML constructs or schema deviations, the enriched message body could be lost or incomplete for reprocessing.",
-    "mitigation": "CallActivity_4 sets ${in.body} into property 'InputPayload' immediately at entry. CallActivity_97 and CallActivity_100 ensure the original payload is restored and appended as an attachment in MPL before ErrorEndEvent EndEvent_95 is reached (covered by TC_GLOVIA_004)."
-  },
-  {
-    "risk": "Parallel Multicast with Single Branch",
-    "consequence": "ParallelGateway_74 is configured as a Parallel Multicast but only contains one outgoing flow (SequenceFlow_109) to ExclusiveGateway_80. If another branch is added without a join gateway, race conditions and duplicate executions occur.",
-    "mitigation": "Coverage analysis and unit assertions ensure that message sequencing is validated and single-branch routing behavior remains deterministic."
+    "risk": "Dangling unlinked flow components in iFlow bundle",
+    "consequence": "CallActivity_86 (Content Modifier extracting OrganizationId) and CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) are defined in definitions but detached from sequence flows, creating architectural ambiguity and dead code.",
+    "mitigation": "Test suite asserts routing logic based on router expressions; coverage analysis documents dead-code fragments for refactoring/removal."
   }
 ]

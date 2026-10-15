@@ -1,72 +1,74 @@
 # Suggested fixes — SI_Glovia_SalesOrderCreate
 
-Generated for commit `c982c52858ad` from the failure log.
+Generated for commit `09df2fec93d1` from the failure log.
 
 > Written by a model from the iFlow XML and its scripts. It is a hypothesis to speed up the investigation, not a verdict: check it against the artifact before changing anything.
 
 ---
 
-### Failure Analysis and Layer Identification
+### Analysis of Test Results and Layer Identification
 
-#### 1. Failure Analysis: `test_tc_glovia_003_routing_default_escalation`
-* **Failure Layer**: **Generated Test** (`CI-CD/tests/SI_Glovia_SalesOrderCreate/test_flow.py`)
-* **Root Cause**: The test failure is caused by an XML namespace resolution defect inside the AI-generated pytest file, not in the iFlow or Groovy scripts.
-  In `test_flow.py`, the test configures a mocked response body:
-  ```xml
-  <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
-    <SOAP:Body>
-      <SOAP:Fault>
-        <faultcode>SOAP:Client</faultcode>
-        <faultstring>Escalation: RoutingConditionNotMet</faultstring>
-      </SOAP:Fault>
-    </SOAP:Body>
-  </SOAP:Envelope>
-  ```
-  In this mock payload, the prefix `SOAP:` is bound to `http://schemas.xmlsoap.org/soap/envelope/`, but the child elements `<faultcode>` and `<faultstring>` have no namespace prefix, nor is a default `xmlns` namespace declared. When Python's `xml.etree.ElementTree` parses this payload, the element tag is resolved as `faultstring` (in no namespace). 
-  The test then queries:
-  ```python
-  root.find(".//{http://schemas.xmlsoap.org/soap/envelope/}faultstring")
-  ```
-  Because `faultstring` does not belong to the `http://schemas.xmlsoap.org/soap/envelope/` namespace, `.find(...)` returns `None`, causing `assert fault_string is not None` to fail.
-* **Resolution**: No changes are required in the iFlow XML or Groovy scripts. The generated test should be corrected to search without namespace (e.g. `root.find(".//faultstring")` or `root.find(".//{*}faultstring")`) or the mock payload in `test_flow.py` should prefix the tag as `<SOAP:faultstring>`.
+Reviewing both test execution logs:
+1. **Pytest Suite (`pytest_logs.txt`)**: 5 passed out of 5 tests (100% pass rate).
+2. **Groovy Test Harness (`groovy_logs.txt`)**: 4 passed out of 4 tests (100% pass rate).
 
-#### 2. Groovy Scripts Check
-* All Groovy scripts (`GLOVIA_Conditioncheck_Salesorder_Create.groovy`, `Interface_Generic_Headers.groovy`, `Log_Payload.gsh`) compiled and passed 100% of their unit test fixtures in the Groovy harness. No script fixes are needed.
+**Layer Attribution:**
+- **Test Harness Layer:** Functioning as expected; all Groovy script fixtures compile, execute, and pass assertions without `MissingMethodException` or class resolution errors.
+- **Generated Test Layer (Pytest):** Functioning as expected; all routing scenarios, escalation logic, and exception simulations passed.
+- **Groovy Scripts Layer:** Functioning as expected; scripts `GLOVIA_Conditioncheck_Salesorder_Create.groovy`, `Interface_Generic_Headers.groovy`, and `Log_Payload.gsh` executed cleanly.
+- **iFlow XML Layer:** There are no active test failures, but there is an architectural defect in the iFlow XML: **`CallActivity_77`** and **`CallActivity_86`** are completely detached orphaned elements inside `Process_1` with no incoming or outgoing sequence flows.
 
 ---
 
 ## Fix Risks
 
-* **Unattached Process Elements (Dead Code)**:
-  * **Element / Step**: `CallActivity_77` (Groovy Script `GLOVIA_Conditioncheck_Salesorder_Create.groovy`) and `CallActivity_86` (Content Modifier extracting `OrganizationId`).
-  * **Fix / Mitigation**: 
-    * If order validation and organization ID extraction are required by business logic: Rewire the flow in `Process_1`. Insert `CallActivity_86` and `CallActivity_77` between `CallActivity_4` and `ParallelGateway_74` (or `ExclusiveGateway_80`) using sequence flows, and update the router condition on `ExclusiveGateway_80` to evaluate `${header.OrderCodeValid} = 'true'`.
-    * If they are obsolete leftovers: Remove `CallActivity_77` and `CallActivity_86` definitions entirely from the BPMN XML.
+### 1. Silent message termination on unhandled routing exceptions
+- **Analysis:** In the iFlow definition, the sender adapter (`MessageFlow_114`) is configured as one-way (`messageExchangePattern = OneWay`) with `returnExceptionToSender = false`. When an incoming payload does not match either `Glovia_Route_SalesOrder` or `Glovia_Route2_ReturnSalesOrder`, it routes along `SequenceFlow_110` to `EndEvent_11` (Escalation End) with error code `RoutingConditionNotMet`. Because the inbound SOAP exchange is asynchronous one-way, no SOAP Fault can be synchronously delivered back to the sender.
+- **Fix / Mitigation:**
+  - **In the iFlow:** If the sender requires synchronous error feedback, change `MessageFlow_114` to Request-Reply (`messageExchangePattern = RequestReply`) and set `returnExceptionToSender = true`. If the interface must remain asynchronous one-way, retain `EndEvent_11` or replace it with an `EndErrorEvent` (`EndEvent`) to ensure the message status in CPI transitions to `Failed` rather than `Escalated`.
+  - **Mitigation outside the iFlow:** Configure an automated alert in SAP Cloud Integration / SAP Alert Notification service triggered by `ErrorCode = RoutingConditionNotMet` so operational teams are notified immediately of unmatched sales orders.
 
-* **Escalation EndEvent silently halting message delivery**:
-  * **Element / Step**: `EndEvent_11` (`EscalationEndEvent` with `ErrorCode`: `RoutingConditionNotMet`) and Collaboration property `returnExceptionToSender`.
-  * **Fix / Mitigation**: In the Collaboration properties, `returnExceptionToSender` is set to `false`. If the sender needs to be notified that a message was rejected by routing, change property `returnExceptionToSender` to `true`. Alternatively, if the interface is purely asynchronous one-way SOAP (Fire-and-Forget) where the sender cannot receive faults, replace `EndEvent_11` with an `EndErrorEvent` (or route through an Error Subprocess) so that the message status is marked as `Failed` in the Message Processing Log (MPL) to trigger administrative alerting.
+### 2. Property loss on exception subprocess body overwrite
+- **Analysis:** `CallActivity_4` ("Set Message headers") is placed immediately after `StartEvent_2` to capture `${in.body}` into property `InputPayload`. In `SubProcess_91`, `CallActivity_97` restores `${property.InputPayload}` before `CallActivity_100` (`Log_Payload.gsh`) attaches it to the message log. If a failure occurs before or during `CallActivity_4`, `InputPayload` will be null, and `CallActivity_97` will overwrite the body with an empty value.
+- **Current Coverage & Fix:**
+  - **Current Design:** The current design already mitigates this for all downstream failures (multicast, routing, mapping) because `CallActivity_4` runs first.
+  - **Script / Step Fix:** To eliminate the risk of overwriting the body if `InputPayload` is unset, modify `Log_Payload.gsh` to read directly from the property with fallback to the existing body, eliminating the need for `CallActivity_97` altogether:
+    ```groovy
+    def body = message.getProperty("InputPayload") ?: message.getBody(java.lang.String) as String
+    def messageLog = messageLogFactory.getMessageLog(message)
+    if (messageLog != null && body != null) {
+        messageLog.addAttachmentAsString("Payload", body, "text/plain")
+    }
+    ```
+  - Alternatively, in `CallActivity_97`, configure the wrap content expression as `${property.InputPayload ?: in.body}`.
 
-* **Payload Loss during Mapping Failures**:
-  * **Element / Step**: `CallActivity_4`, `SubProcess_91`, `CallActivity_97`, `CallActivity_100`.
-  * **Fix / Mitigation**: **Already covered by current design.** In `Process_1`, `CallActivity_4` saves `${in.body}` to property `InputPayload` upon receipt. If `CallActivity_102` (Message Mapping) throws an exception, `SubProcess_91` intercepts the error, `CallActivity_97` restores the body from `${property.InputPayload}`, and `CallActivity_100` (`Log_Payload.gsh`) attaches the raw payload to the MPL before ending at `EndEvent_95`.
-
-* **Parallel Multicast with Single Branch**:
-  * **Element / Step**: `ParallelGateway_74` (Parallel Multicast) and `SequenceFlow_109`.
-  * **Fix / Mitigation**: A parallel fork gateway with only a single outgoing branch adds needless overhead and creates concurrency issues if additional unjoined paths are added later. In the iFlow XML, remove `ParallelGateway_74` and connect `CallActivity_4` (or `CallActivity_77` if wired) directly to `ExclusiveGateway_80` via a standard sequence flow.
+### 3. Dangling unlinked flow components in iFlow bundle
+- **Analysis:** `CallActivity_86` (Content Modifier) and `CallActivity_77` (Groovy Script calling `GLOVIA_Conditioncheck_Salesorder_Create.groovy`) are declared inside `<bpmn2:process id="Process_1">` but lack incoming (`<bpmn2:incoming>`) and outgoing (`<bpmn2:outgoing>`) sequence flows.
+- **Fix:**
+  - In `Process_1` of the iFlow XML, remove the dangling element tags `<bpmn2:callActivity id="CallActivity_86" ... />` and `<bpmn2:callActivity id="CallActivity_77" ... />`.
+  - Remove their matching graphical representations in `<bpmndi:BPMNPlane>`: `<bpmndi:BPMNShape bpmnElement="CallActivity_86" ... />` and `<bpmndi:BPMNShape bpmnElement="CallActivity_77" ... />`.
+  - If `GLOVIA_Conditioncheck_Salesorder_Create.groovy` was intended to validate order codes prior to `ExclusiveGateway_80`, wire `CallActivity_77` between `ParallelGateway_74` and `ExclusiveGateway_80` via explicit `<bpmn2:sequenceFlow>` connectors. Because the current router gateway directly parses the XML expression, these elements are dead legacy code and should be removed.
 
 ---
 
 ## Fix Coverage
 
-Every uncovered component and path below 100% is due to disconnected elements in the BPMN model:
+### Uncovered Elements (0% Coverage):
+- **`CallActivity_86 (Content Modifier)` / `CallActivity_86 (Detached Content Modifier)` (0%)**
+- **`CallActivity_77 (Groovy Script 2)` / `CallActivity_77 (Detached Groovy Script)` (0%)**
 
-* **`CallActivity_77 (Groovy Script 2)` (0%)**
-* **`CallActivity_86 (Content Modifier)` (0%)**
-* **Uncovered Path: Disconnected elements `CallActivity_77` and `CallActivity_86`**
-  * **Analysis**: Because neither `CallActivity_77` nor `CallActivity_86` has incoming or outgoing `bpmn2:sequenceFlow` elements connecting them to `StartEvent_2` or any reachable branch in `Process_1`, no test runner or runtime execution can ever reach them.
-  * **Concrete Action**:
-    1. **To make reachable and cover with tests**: Wire them into the executable path. In `Process_1` in the iFlow XML, route `CallActivity_4` &rarr; `CallActivity_86` &rarr; `CallActivity_77` &rarr; `ExclusiveGateway_80`. Once connected, add two test cases to the pytest suite:
-       * One supplying an XML payload with a valid code (`YORB`, `POR`, etc.) verifying that `OrderCodeValid` is set to `"true"` and reaches the target receiver.
-       * One supplying an invalid order code verifying that `OrderCodeValid` is set to `"false"`.
-    2. **If redundant/obsolete (Recommended)**: Delete `<bpmn2:callActivity id="CallActivity_77" .../>` and `<bpmn2:callActivity id="CallActivity_86" .../>` from the XML file. Once deleted from the artifact, the remaining executable components are already at 100% coverage across all active sequence flows and branches.
+### Uncovered Paths:
+- **`CallActivity_86 and CallActivity_77 have no incoming or outgoing SequenceFlow edges in Process_1 BPMN plane.`**
+- **`Unreachable in the process: CallActivity_77 (Groovy Script 2); CallActivity_86 (Content Modifier).`**
+
+### Concrete Resolution:
+1. **Remove Orphaned Elements from Artifact:**
+   - Because `CallActivity_86` and `CallActivity_77` have no incoming or outgoing sequence flows, no runtime path can reach them, and no test can execute them.
+   - Delete `CallActivity_86` and `CallActivity_77` from `Process_1` and delete their corresponding `<bpmndi:BPMNShape>` tags in the BPMN diagram plane.
+   - Once deleted from the XML, all components in the active integration process will be at 100% coverage.
+2. **Alternative (if components were intended to be active):**
+   - If header extraction (`CallActivity_86`) and order validation (`CallActivity_77`) must execute before message routing, reconnect them into the main sequence flow:
+     - Update sequence flow `SequenceFlow_78` from `CallActivity_4` to target `CallActivity_86`.
+     - Add a sequence flow from `CallActivity_86` to `CallActivity_77`.
+     - Add a sequence flow from `CallActivity_77` to `ParallelGateway_74` (or `ExclusiveGateway_80`).
+   - Once connected, add test cases in `test_flow.py` asserting that `CallActivity_86` extracts `OrganizationId` and `CallActivity_77` sets header `OrderCodeValid`.

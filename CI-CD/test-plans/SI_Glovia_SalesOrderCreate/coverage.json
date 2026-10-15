@@ -1,34 +1,31 @@
 {
   "target_coverage_percent": 100,
   "coverage_by_component": {
-    "Sender_SOAP_Adapter": "100%",
-    "CallActivity_4_Set_Message_headers": "100%",
-    "ParallelGateway_74_Multicast": "100%",
-    "ExclusiveGateway_80_Router": "100%",
-    "SequenceFlow_82_SalesOrder": "100%",
-    "CallActivity_102_MessageMapping": "100%",
-    "CallActivity_13_CallHeaders": "100%",
-    "EndEvent_2_MessageEnd": "100%",
-    "SequenceFlow_113_SOReturn": "100%",
-    "CallActivity_71_CallHeaders": "100%",
-    "EndEvent_9_MessageEnd": "100%",
-    "SequenceFlow_110_Default": "100%",
-    "EndEvent_11_EscalationEnd": "100%",
-    "SubProcess_91_ExceptionSubprocess": "100%",
-    "CallActivity_97_ReadPayloadProperty": "100%",
-    "CallActivity_100_LogPayloadScript": "100%",
-    "EndEvent_95_ErrorEnd": "100%",
-    "CallActivity_77_Dead_Code": "0%",
-    "CallActivity_86_Dead_Code": "0%",
+    "MessageFlow_114 (SOAP Inbound)": "100%",
+    "CallActivity_4 (Set Message headers)": "100%",
+    "ParallelGateway_74 (Parallel Multicast)": "100%",
+    "ExclusiveGateway_80 (Router)": "100%",
+    "SequenceFlow_82 (SalesOrder Route)": "100%",
+    "SequenceFlow_113 (SO Return Route)": "100%",
+    "SequenceFlow_110 (Default Escalation Route)": "100%",
+    "CallActivity_102 (Message Mapping 1)": "100%",
+    "CallActivity_13 (Interface_Generic_Headers)": "100%",
+    "CallActivity_71 (Interface_Generic_Headers)": "100%",
+    "EndEvent_2 (Order End)": "100%",
+    "EndEvent_9 (Return End)": "100%",
+    "EndEvent_11 (Escalation End)": "100%",
+    "SubProcess_91 (Exception Subprocess 1)": "100%",
+    "CallActivity_86 (Detached Content Modifier)": "0%",
+    "CallActivity_77 (Detached Groovy Script)": "0%",
     "CallActivity_77 (Groovy Script 2)": "0%",
     "CallActivity_86 (Content Modifier)": "0%"
   },
   "uncovered_paths": [
-    "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) and CallActivity_86 (Content Modifier extracting OrganizationId) are disconnected in the BPMN process definition and unreachable via sequence flows from StartEvent_2.",
+    "CallActivity_86 and CallActivity_77 have no incoming or outgoing SequenceFlow edges in Process_1 BPMN plane (orphaned elements in the exported XML).",
     "Unreachable in the process: CallActivity_77 (Groovy Script 2); CallActivity_86 (Content Modifier). These elements have no sequence flow connecting them to the flow, so no test can exercise them."
   ],
   "coverage_recommendations": [
-    "Connect CallActivity_77 and CallActivity_86 into the main sequence flow between CallActivity_4 and ParallelGateway_74 if order validation and organization ID extraction are business requirements.",
-    "If CallActivity_77 and CallActivity_86 are obsolete artifacts, delete them from the iFlow model to achieve true 100% executable model coverage."
+    "Remove orphaned elements CallActivity_86 and CallActivity_77 from the iFlow model, or connect them prior to ExclusiveGateway_80 if header pre-validation was intended.",
+    "Deploy the automated pytest mock suite into CI pipeline to continuously assert 100% executable path coverage across all active sequence flows."
   ]
 }

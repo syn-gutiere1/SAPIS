@@ -1,114 +1,106 @@
 {
   "scenarios": [
     {
-      "id": "TC_GLOVIA_001",
-      "name": "Standard Sales Order Processing - Happy Path",
-      "trigger": "Inbound SOAP message with valid Sales Order payload satisfying route condition {{Glovia_Route_SalesOrder}}",
-      "expected_outcome": "Message routed to CallActivity_102 (Message Mapping), CallActivity_13 (Interface Headers logged), terminates at EndEvent_2 with HTTP 202/200 OK",
-      "validates": "CallActivity_4 sets InputPayload property and configured headers; ExclusiveGateway_80 evaluates SequenceFlow_82 successfully; Message Mapping 1 executes; generic headers script completes without error"
+      "id": "TC_SO_CREATE_01",
+      "name": "Standard Sales Order Processing - Route to Create Order",
+      "trigger": "Inbound SOAP request containing standard sales order notification (e.g. OrderTypeCode YORB)",
+      "expected_outcome": "HTTP 200/202 SOAP Response; message mapped via Test_Mapping and generic logging headers configured",
+      "validates": "ExclusiveGateway_80 evaluation of Glovia_Route_SalesOrder, CallActivity_102 mapping execution, and CallActivity_13 header enrichment leading to EndEvent_2"
     },
     {
-      "id": "TC_GLOVIA_002",
-      "name": "Sales Order Return Processing - Happy Path",
-      "trigger": "Inbound SOAP message matching condition {{Glovia_Route2_ReturnSalesOrder}}",
-      "expected_outcome": "Message routed via SequenceFlow_113 to CallActivity_71, logs headers to MPL, terminates at EndEvent_9",
-      "validates": "ExclusiveGateway_80 evaluates Return condition; bypasses Message Mapping 1; CallActivity_71 populates custom MPL header attributes (Country, Region, BusinessObject, Sender, TimeStamp)"
+      "id": "TC_SO_RETURN_02",
+      "name": "Sales Order Return Processing - Route to Return Flow",
+      "trigger": "Inbound SOAP request containing return order notification (e.g. OrderTypeCode POR)",
+      "expected_outcome": "HTTP 200/202 SOAP Response; bypasses message mapping, logs return order headers via CallActivity_71 to EndEvent_9",
+      "validates": "ExclusiveGateway_80 evaluation of Glovia_Route2_ReturnSalesOrder branch and CallActivity_71 header enrichment"
     },
     {
-      "id": "TC_GLOVIA_003",
-      "name": "Routing Condition Unmatched - Default Escalation End",
-      "trigger": "Inbound SOAP message with order type not matching Route 1 or Route 2",
-      "expected_outcome": "Message falls through to SequenceFlow_110 (Default) and triggers EscalationEndEvent EndEvent_11 with ErrorCode 'RoutingConditionNotMet'",
-      "validates": "ExclusiveGateway_80 default path execution; escalation event triggered without throwing uncaught runtime exception"
+      "id": "TC_ROUTER_DEFAULT_ESCALATION_03",
+      "name": "Unmatched Order Type - Default Route Escalation",
+      "trigger": "Inbound SOAP request containing unrecognized OrderTypeCode not matching SalesOrder or SO Return rules",
+      "expected_outcome": "SOAP 1.1 Fault returned to caller with faultstring containing Escalation and ErrorCode RoutingConditionNotMet",
+      "validates": "ExclusiveGateway_80 default path (SequenceFlow_110) triggering EscalationEndEvent EndEvent_11"
     },
     {
-      "id": "TC_GLOVIA_004",
-      "name": "Message Mapping Runtime Failure - Error Subprocess Handling",
-      "trigger": "Inbound SOAP message triggering Sales Order route but containing corrupted XML structure breaking Message Mapping 1",
-      "expected_outcome": "Process terminates in SubProcess_91: CallActivity_97 restores original payload from ${property.InputPayload}, CallActivity_100 logs payload attachment, EndEvent_95 raises ErrorEndEvent",
-      "validates": "Property 'InputPayload' capture in CallActivity_4; ErrorStartEvent_92 invocation; payload logging via Log_Payload.gsh attachment; final error state"
+      "id": "TC_MAPPING_FAILURE_EX_SUBPROCESS_04",
+      "name": "Mapping Execution Failure - Exception Subprocess Handling",
+      "trigger": "Inbound SOAP request with missing mandatory fields causing mapping exception during CallActivity_102",
+      "expected_outcome": "Execution routed to SubProcess_91; original InputPayload restored from exchange property, logged via Log_Payload.gsh, and aborted via EndEvent_95",
+      "validates": "SubProcess_91 execution, CallActivity_97 payload restoration from ${property.InputPayload}, and CallActivity_100 logging"
     },
     {
-      "id": "TC_GLOVIA_005",
-      "name": "Inbound SOAP Envelope Malformed - HTTP Sender Rejection",
-      "trigger": "HTTP POST request with unparseable SOAP XML body",
-      "expected_outcome": "HTTP 500 / SOAP Fault returned by SOAP adapter before business process execution",
-      "validates": "Inbound SOAP adapter schema compliance and maximum body size boundary enforcement"
+      "id": "TC_MALFORMED_XML_05",
+      "name": "Malformed XML Envelope Inbound Handling",
+      "trigger": "Inbound HTTP POST containing non-parseable XML or invalid SOAP Envelope",
+      "expected_outcome": "HTTP 500 SOAP Fault indicating XML parsing failure with unqualified faultcode and faultstring elements",
+      "validates": "Inbound SOAP adapter validation at MessageFlow_114 and CXF robust parsing boundary"
     }
   ],
   "test_data": [
     {
-      "filename": "testdata/sales_order_valid.xml",
-      "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<SOAP:Envelope xmlns:SOAP=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:ns1=\"http://soap.sforce.com/2005/09/outbound\" xmlns:ns2=\"urn:sobject.enterprise.soap.sforce.com\">\n  <SOAP:Header/>\n  <SOAP:Body>\n    <ns1:notifications>\n      <ns1:Notification>\n        <ns1:Id>04k000000000001</ns1:Id>\n        <ns1:sObject>\n          <ns2:Id>a01000000000001</ns2:Id>\n          <ns2:giic_OrderTypeCode__c>YORB</ns2:giic_OrderTypeCode__c>\n          <ns2:CustomerNumber>CUST-10023</ns2:CustomerNumber>\n          <ns2:TotalAmount>15420.50</ns2:TotalAmount>\n        </ns1:sObject>\n      </ns1:Notification>\n    </ns1:notifications>\n  </SOAP:Body>\n</SOAP:Envelope>"
+      "filename": "testdata/soap_sales_order_valid.xml",
+      "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:out=\"http://soap.sforce.com/2005/09/outbound\" xmlns:sobj=\"urn:sobject.enterprise.soap.sforce.com\">\n  <soapenv:Header/>\n  <soapenv:Body>\n    <out:notifications>\n      <out:OrganizationId>00D000000000001EAA</out:OrganizationId>\n      <out:ActionId>04k000000000001EAA</out:ActionId>\n      <out:Notification>\n        <out:Id>04l000000000001EAA</out:Id>\n        <out:sObject>\n          <sobj:Id>a01000000000001AAA</sobj:Id>\n          <sobj:giic_OrderTypeCode__c>YORB</sobj:giic_OrderTypeCode__c>\n          <sobj:giic_OrderNumber__c>ORD-99201</sobj:giic_OrderNumber__c>\n          <sobj:giic_TotalAmount__c>15420.50</sobj:giic_TotalAmount__c>\n        </out:sObject>\n      </out:Notification>\n    </out:notifications>\n  </soapenv:Body>\n</soapenv:Envelope>"
     },
     {
-      "filename": "testdata/sales_order_return.xml",
-      "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<SOAP:Envelope xmlns:SOAP=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:ns1=\"http://soap.sforce.com/2005/09/outbound\" xmlns:ns2=\"urn:sobject.enterprise.soap.sforce.com\">\n  <SOAP:Header/>\n  <SOAP:Body>\n    <ns1:notifications>\n      <ns1:Notification>\n        <ns1:Id>04k000000000002</ns1:Id>\n        <ns1:sObject>\n          <ns2:Id>a01000000000002</ns2:Id>\n          <ns2:giic_OrderTypeCode__c>POR</ns2:giic_OrderTypeCode__c>\n          <ns2:ReturnReason>DefectiveGoods</ns2:ReturnReason>\n          <ns2:OriginalOrderReference>ORD-99381</ns2:OriginalOrderReference>\n        </ns1:sObject>\n      </ns1:Notification>\n    </ns1:notifications>\n  </SOAP:Body>\n</SOAP:Envelope>"
+      "filename": "testdata/soap_so_return_valid.xml",
+      "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:out=\"http://soap.sforce.com/2005/09/outbound\" xmlns:sobj=\"urn:sobject.enterprise.soap.sforce.com\">\n  <soapenv:Header/>\n  <soapenv:Body>\n    <out:notifications>\n      <out:OrganizationId>00D000000000001EAA</out:OrganizationId>\n      <out:ActionId>04k000000000002EAA</out:ActionId>\n      <out:Notification>\n        <out:Id>04l000000000002EAA</out:Id>\n        <out:sObject>\n          <sobj:Id>a01000000000002AAA</sobj:Id>\n          <sobj:giic_OrderTypeCode__c>POR</sobj:giic_OrderTypeCode__c>\n          <sobj:giic_ReturnReason__c>Defective</sobj:giic_ReturnReason__c>\n          <sobj:giic_OrderNumber__c>RET-10042</sobj:giic_OrderNumber__c>\n        </out:sObject>\n      </out:Notification>\n    </out:notifications>\n  </soapenv:Body>\n</soapenv:Envelope>"
     },
     {
-      "filename": "testdata/sales_order_unmatched.xml",
-      "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<SOAP:Envelope xmlns:SOAP=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:ns1=\"http://soap.sforce.com/2005/09/outbound\" xmlns:ns2=\"urn:sobject.enterprise.soap.sforce.com\">\n  <SOAP:Header/>\n  <SOAP:Body>\n    <ns1:notifications>\n      <ns1:Notification>\n        <ns1:Id>04k000000000003</ns1:Id>\n        <ns1:sObject>\n          <ns2:Id>a01000000000003</ns2:Id>\n          <ns2:giic_OrderTypeCode__c>UNKNOWN_TYPE</ns2:giic_OrderTypeCode__c>\n        </ns1:sObject>\n      </ns1:Notification>\n    </ns1:notifications>\n  </SOAP:Body>\n</SOAP:Envelope>"
+      "filename": "testdata/soap_unmatched_route.xml",
+      "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:out=\"http://soap.sforce.com/2005/09/outbound\" xmlns:sobj=\"urn:sobject.enterprise.soap.sforce.com\">\n  <soapenv:Header/>\n  <soapenv:Body>\n    <out:notifications>\n      <out:OrganizationId>00D000000000001EAA</out:OrganizationId>\n      <out:ActionId>04k000000000003EAA</out:ActionId>\n      <out:Notification>\n        <out:Id>04l000000000003EAA</out:Id>\n        <out:sObject>\n          <sobj:Id>a01000000000003AAA</sobj:Id>\n          <sobj:giic_OrderTypeCode__c>UNKNOWN_XYZ</sobj:giic_OrderTypeCode__c>\n        </out:sObject>\n      </out:Notification>\n    </out:notifications>\n  </soapenv:Body>\n</soapenv:Envelope>"
     },
     {
-      "filename": "testdata/sales_order_corrupted.xml",
-      "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<SOAP:Envelope xmlns:SOAP=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:ns1=\"http://soap.sforce.com/2005/09/outbound\" xmlns:ns2=\"urn:sobject.enterprise.soap.sforce.com\">\n  <SOAP:Header/>\n  <SOAP:Body>\n    <ns1:notifications>\n      <ns1:Notification>\n        <ns1:sObject>\n          <ns2:giic_OrderTypeCode__c>YORB</ns2:giic_OrderTypeCode__c>\n          <!-- Incomplete tags triggering Message Mapping Schema failure -->\n          <ns2:CorruptBlock><![CDATA[Unclosed block\n    </ns1:notifications>\n  </SOAP:Body>\n</SOAP:Envelope>"
+      "filename": "testdata/soap_malformed_input.xml",
+      "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\">\n  <soapenv:Header/>\n  <soapenv:Body>\n    <unclosedTag>Broken XML content without termination\n  </soapenv:Body>\n</soapenv:Envelope>"
     }
   ],
   "pytest_script": {
     "filename": "test_flow.py",
-    "content": "import os\nimport json\nimport xml.etree.ElementTree as ET\nimport pytest\nimport requests\nimport responses\n\nTEST_ENDPOINT = \"https://cpi.example.invalid/cxf/Glovia_SalesOrder\"\n\nSOAP_HEADERS = {\n    \"Content-Type\": \"text/xml; charset=UTF-8\",\n    \"SOAPAction\": \"\\\"\\\"\"\n}\n\n@pytest.fixture\ndef valid_sales_order_xml():\n    return (\n        \"<?xml version=\\\"1.0\\\" encoding=\\\"UTF-8\\\"?>\\n\"\n        \"<SOAP:Envelope xmlns:SOAP=\\\"http://schemas.xmlsoap.org/soap/envelope/\\\" \"\n        \"xmlns:ns1=\\\"http://soap.sforce.com/2005/09/outbound\\\" \"\n        \"xmlns:ns2=\\\"urn:sobject.enterprise.soap.sforce.com\\\">\\n\"\n        \"  <SOAP:Header/>\\n\"\n        \"  <SOAP:Body>\\n\"\n        \"    <ns1:notifications>\\n\"\n        \"      <ns1:Notification>\\n\"\n        \"        <ns1:Id>04k000000000001</ns1:Id>\\n\"\n        \"        <ns1:sObject>\\n\"\n        \"          <ns2:Id>a01000000000001</ns2:Id>\\n\"\n        \"          <ns2:giic_OrderTypeCode__c>YORB</ns2:giic_OrderTypeCode__c>\\n\"\n        \"          <ns2:CustomerNumber>CUST-10023</ns2:CustomerNumber>\\n\"\n        \"        </ns1:sObject>\\n\"\n        \"      </ns1:Notification>\\n\"\n        \"    </ns1:notifications>\\n\"\n        \"  </SOAP:Body>\\n\"\n        \"</SOAP:Envelope>\"\n    )\n\n@pytest.fixture\ndef return_sales_order_xml():\n    return (\n        \"<?xml version=\\\"1.0\\\" encoding=\\\"UTF-8\\\"?>\\n\"\n        \"<SOAP:Envelope xmlns:SOAP=\\\"http://schemas.xmlsoap.org/soap/envelope/\\\" \"\n        \"xmlns:ns1=\\\"http://soap.sforce.com/2005/09/outbound\\\" \"\n        \"xmlns:ns2=\\\"urn:sobject.enterprise.soap.sforce.com\\\">\\n\"\n        \"  <SOAP:Header/>\\n\"\n        \"  <SOAP:Body>\\n\"\n        \"    <ns1:notifications>\\n\"\n        \"      <ns1:Notification>\\n\"\n        \"        <ns1:Id>04k000000000002</ns1:Id>\\n\"\n        \"        <ns1:sObject>\\n\"\n        \"          <ns2:Id>a01000000000002</ns2:Id>\\n\"\n        \"          <ns2:giic_OrderTypeCode__c>POR</ns2:giic_OrderTypeCode__c>\\n\"\n        \"        </ns1:sObject>\\n\"\n        \"      </ns1:Notification>\\n\"\n        \"    </ns1:notifications>\\n\"\n        \"  </SOAP:Body>\\n\"\n        \"</SOAP:Envelope>\"\n    )\n\n@pytest.fixture\ndef unmatched_order_xml():\n    return (\n        \"<?xml version=\\\"1.0\\\" encoding=\\\"UTF-8\\\"?>\\n\"\n        \"<SOAP:Envelope xmlns:SOAP=\\\"http://schemas.xmlsoap.org/soap/envelope/\\\" \"\n        \"xmlns:ns1=\\\"http://soap.sforce.com/2005/09/outbound\\\" \"\n        \"xmlns:ns2=\\\"urn:sobject.enterprise.soap.sforce.com\\\">\\n\"\n        \"  <SOAP:Header/>\\n\"\n        \"  <SOAP:Body>\\n\"\n        \"    <ns1:notifications>\\n\"\n        \"      <ns1:Notification>\\n\"\n        \"        <ns1:Id>04k000000000003</ns1:Id>\\n\"\n        \"        <ns1:sObject>\\n\"\n        \"          <ns2:Id>a01000000000003</ns2:Id>\\n\"\n        \"          <ns2:giic_OrderTypeCode__c>NON_MATCHING</ns2:giic_OrderTypeCode__c>\\n\"\n        \"        </ns1:sObject>\\n\"\n        \"      </ns1:Notification>\\n\"\n        \"    </ns1:notifications>\\n\"\n        \"  </SOAP:Body>\\n\"\n        \"</SOAP:Envelope>\"\n    )\n\n@responses.activate\ndef test_tc_glovia_001_sales_order_happy_path(valid_sales_order_xml):\n    # OneWay SOAP endpoint responds 202 Accepted upon successful handoff to mapping & end event\n    responses.add(\n        responses.POST,\n        TEST_ENDPOINT,\n        body=\"<SOAP:Envelope xmlns:SOAP=\\\"http://schemas.xmlsoap.org/soap/envelope/\\\"><SOAP:Body/></SOAP:Envelope>\",\n        status=202,\n        headers={\n            \"Content-Type\": \"text/xml\",\n            \"SAP-Processing-Route\": \"SequenceFlow_82\",\n            \"SAP-CustomHeader-BusinessObject\": \"SalesOrder\",\n            \"SAP-CustomHeader-Country\": \"US\",\n            \"SAP-CustomHeader-Region\": \"AMER\",\n            \"SAP-CustomHeader-Sender\": \"Glovia\"\n        }\n    )\n\n    response = requests.post(TEST_ENDPOINT, data=valid_sales_order_xml, headers=SOAP_HEADERS, timeout=10)\n    assert response.status_code == 202\n    assert response.headers.get(\"SAP-Processing-Route\") == \"SequenceFlow_82\"\n    assert response.headers.get(\"SAP-CustomHeader-BusinessObject\") == \"SalesOrder\"\n    assert response.headers.get(\"SAP-CustomHeader-Country\") == \"US\"\n\n@responses.activate\ndef test_tc_glovia_002_sales_order_return_route(return_sales_order_xml):\n    responses.add(\n        responses.POST,\n        TEST_ENDPOINT,\n        body=\"<SOAP:Envelope xmlns:SOAP=\\\"http://schemas.xmlsoap.org/soap/envelope/\\\"><SOAP:Body/></SOAP:Envelope>\",\n        status=202,\n        headers={\n            \"Content-Type\": \"text/xml\",\n            \"SAP-Processing-Route\": \"SequenceFlow_113\",\n            \"SAP-CustomHeader-BusinessObject\": \"SalesOrderReturn\",\n            \"SAP-CustomHeader-Sender\": \"Glovia\"\n        }\n    )\n\n    response = requests.post(TEST_ENDPOINT, data=return_sales_order_xml, headers=SOAP_HEADERS, timeout=10)\n    assert response.status_code == 202\n    assert response.headers.get(\"SAP-Processing-Route\") == \"SequenceFlow_113\"\n    assert response.headers.get(\"SAP-CustomHeader-BusinessObject\") == \"SalesOrderReturn\"\n\n@responses.activate\ndef test_tc_glovia_003_routing_default_escalation(unmatched_order_xml):\n    responses.add(\n        responses.POST,\n        TEST_ENDPOINT,\n        body=\"<SOAP:Envelope xmlns:SOAP=\\\"http://schemas.xmlsoap.org/soap/envelope/\\\"><SOAP:Body><SOAP:Fault><faultcode>SOAP:Client</faultcode><faultstring>Escalation: RoutingConditionNotMet</faultstring></SOAP:Fault></SOAP:Body></SOAP:Envelope>\",\n        status=200,\n        headers={\n            \"Content-Type\": \"text/xml\",\n            \"SAP-Escalation-Code\": \"RoutingConditionNotMet\",\n            \"SAP-Processing-Route\": \"SequenceFlow_110\"\n        }\n    )\n\n    response = requests.post(TEST_ENDPOINT, data=unmatched_order_xml, headers=SOAP_HEADERS, timeout=10)\n    assert response.status_code == 200\n    assert response.headers.get(\"SAP-Escalation-Code\") == \"RoutingConditionNotMet\"\n    root = ET.fromstring(response.text)\n    fault_string = root.find(\".//{http://schemas.xmlsoap.org/soap/envelope/}faultstring\")\n    assert fault_string is not None\n    assert \"RoutingConditionNotMet\" in fault_string.text\n\n@responses.activate\ndef test_tc_glovia_004_mapping_error_subprocess():\n    corrupted_payload = \"<SOAP:Envelope><SOAP:Body><Corrupt/></SOAP:Body></SOAP:Envelope>\"\n    responses.add(\n        responses.POST,\n        TEST_ENDPOINT,\n        body=\"<SOAP:Envelope xmlns:SOAP=\\\"http://schemas.xmlsoap.org/soap/envelope/\\\"><SOAP:Body><SOAP:Fault><faultcode>SOAP:Server</faultcode><faultstring>Processing Error</faultstring></SOAP:Fault></SOAP:Body></SOAP:Envelope>\",\n        status=500,\n        headers={\n            \"Content-Type\": \"text/xml\",\n            \"SAP-ErrorSubprocess-Executed\": \"SubProcess_91\",\n            \"SAP-Payload-Restored\": \"true\",\n            \"SAP-Log-Attachment\": \"Payload\"\n        }\n    )\n\n    response = requests.post(TEST_ENDPOINT, data=corrupted_payload, headers=SOAP_HEADERS, timeout=10)\n    assert response.status_code == 500\n    assert response.headers.get(\"SAP-ErrorSubprocess-Executed\") == \"SubProcess_91\"\n    assert response.headers.get(\"SAP-Payload-Restored\") == \"true\"\n    assert response.headers.get(\"SAP-Log-Attachment\") == \"Payload\"\n\n@responses.activate\ndef test_tc_glovia_005_network_timeout_handling(valid_sales_order_xml):\n    responses.add(\n        responses.POST,\n        TEST_ENDPOINT,\n        body=requests.exceptions.Timeout(\"Simulated gateway timeout\")\n    )\n\n    with pytest.raises(requests.exceptions.Timeout):\n        requests.post(TEST_ENDPOINT, data=valid_sales_order_xml, headers=SOAP_HEADERS, timeout=1)\n"
+    "content": "import json\nimport xml.etree.ElementTree as ET\nimport pytest\nimport responses\nimport requests\n\nSOAP_ENV_NS = \"{http://schemas.xmlsoap.org/soap/envelope/}\"\nENDPOINT_URL = \"https://cpi-runtime.example.invalid/cxf/Glovia_SalesOrder\"\n\nSO_VALID_PAYLOAD = \"\"\"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:out=\"http://soap.sforce.com/2005/09/outbound\" xmlns:sobj=\"urn:sobject.enterprise.soap.sforce.com\">\n  <soapenv:Header/>\n  <soapenv:Body>\n    <out:notifications>\n      <out:Notification>\n        <out:sObject>\n          <sobj:giic_OrderTypeCode__c>YORB</sobj:giic_OrderTypeCode__c>\n          <sobj:giic_OrderNumber__c>ORD-99201</sobj:giic_OrderNumber__c>\n        </out:sObject>\n      </out:Notification>\n    </out:notifications>\n  </soapenv:Body>\n</soapenv:Envelope>\"\"\"\n\nSO_RETURN_PAYLOAD = \"\"\"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:out=\"http://soap.sforce.com/2005/09/outbound\" xmlns:sobj=\"urn:sobject.enterprise.soap.sforce.com\">\n  <soapenv:Header/>\n  <soapenv:Body>\n    <out:notifications>\n      <out:Notification>\n        <out:sObject>\n          <sobj:giic_OrderTypeCode__c>POR</sobj:giic_OrderTypeCode__c>\n        </out:sObject>\n      </out:Notification>\n    </out:notifications>\n  </soapenv:Body>\n</soapenv:Envelope>\"\"\"\n\nSO_UNMATCHED_PAYLOAD = \"\"\"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:out=\"http://soap.sforce.com/2005/09/outbound\" xmlns:sobj=\"urn:sobject.enterprise.soap.sforce.com\">\n  <soapenv:Header/>\n  <soapenv:Body>\n    <out:notifications>\n      <out:Notification>\n        <out:sObject>\n          <sobj:giic_OrderTypeCode__c>UNKNOWN_CODE</sobj:giic_OrderTypeCode__c>\n        </out:sObject>\n      </out:Notification>\n    </out:notifications>\n  </soapenv:Body>\n</soapenv:Envelope>\"\"\"\n\nSO_MALFORMED_PAYLOAD = \"<soapenv:Envelope><soapenv:Body><unclosedTag>Malformed\" \n\nSOAP_ACK_SUCCESS = \"\"\"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\">\n  <soapenv:Body>\n    <notificationsResponse xmlns=\"http://soap.sforce.com/2005/09/outbound\">\n      <Ack>true</Ack>\n    </notificationsResponse>\n  </soapenv:Body>\n</soapenv:Envelope>\"\"\"\n\nSOAP_ESCALATION_FAULT = \"\"\"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\">\n  <soapenv:Body>\n    <soapenv:Fault>\n      <faultcode>soapenv:Server</faultcode>\n      <faultstring>Escalation: RoutingConditionNotMet</faultstring>\n      <detail>\n        <ErrorCode>RoutingConditionNotMet</ErrorCode>\n      </detail>\n    </soapenv:Fault>\n  </soapenv:Body>\n</soapenv:Envelope>\"\"\"\n\nSOAP_PARSING_FAULT = \"\"\"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\">\n  <soapenv:Body>\n    <soapenv:Fault>\n      <faultcode>soapenv:Client</faultcode>\n      <faultstring>XML parsing error: unclosed token</faultstring>\n    </soapenv:Fault>\n  </soapenv:Body>\n</soapenv:Envelope>\"\"\"\n\n\n@pytest.fixture\ndef standard_headers():\n    return {\n        \"Content-Type\": \"text/xml; charset=UTF-8\",\n        \"SOAPAction\": \"\"\"\"\"\",\n        \"Region\": \"NA\",\n        \"Country\": \"US\",\n        \"BusinessObject\": \"SalesOrder\",\n        \"Sender\": \"Glovia\"\n    }\n\n\n@responses.activate\ndef test_tc_so_create_happy_path(standard_headers):\n    responses.add(\n        responses.POST,\n        ENDPOINT_URL,\n        body=SOAP_ACK_SUCCESS,\n        status=200,\n        content_type=\"text/xml; charset=UTF-8\",\n        headers={\"X-Flow-Step\": \"EndEvent_2\"}\n    )\n\n    response = requests.post(ENDPOINT_URL, data=SO_VALID_PAYLOAD, headers=standard_headers, timeout=10)\n    \n    assert response.status_code == 200\n    assert response.headers.get(\"X-Flow-Step\") == \"EndEvent_2\"\n    \n    root = ET.fromstring(response.text)\n    fault = root.find(f\".//{SOAP_ENV_NS}Fault\")\n    assert fault is None, \"Happy path response must not contain a SOAP Fault\"\n    \n    ack = root.find(\".//{http://soap.sforce.com/2005/09/outbound}Ack\")\n    assert ack is not None and ack.text == \"true\"\n\n\n@responses.activate\ndef test_tc_so_return_happy_path(standard_headers):\n    responses.add(\n        responses.POST,\n        ENDPOINT_URL,\n        body=SOAP_ACK_SUCCESS,\n        status=200,\n        content_type=\"text/xml; charset=UTF-8\",\n        headers={\"X-Flow-Step\": \"EndEvent_9\"}\n    )\n\n    response = requests.post(ENDPOINT_URL, data=SO_RETURN_PAYLOAD, headers=standard_headers, timeout=10)\n    \n    assert response.status_code == 200\n    assert response.headers.get(\"X-Flow-Step\") == \"EndEvent_9\"\n    \n    root = ET.fromstring(response.text)\n    ack = root.find(\".//{http://soap.sforce.com/2005/09/outbound}Ack\")\n    assert ack is not None and ack.text == \"true\"\n\n\n@responses.activate\ndef test_tc_unmatched_routing_escalation(standard_headers):\n    responses.add(\n        responses.POST,\n        ENDPOINT_URL,\n        body=SOAP_ESCALATION_FAULT,\n        status=500,\n        content_type=\"text/xml; charset=UTF-8\"\n    )\n\n    response = requests.post(ENDPOINT_URL, data=SO_UNMATCHED_PAYLOAD, headers=standard_headers, timeout=10)\n    \n    assert response.status_code == 500\n    root = ET.fromstring(response.text)\n    \n    fault = root.find(f\".//{SOAP_ENV_NS}Fault\")\n    assert fault is not None, \"Expected SOAP Fault element qualified by Envelope namespace\"\n    \n    # In SOAP 1.1 faultcode and faultstring are UNQUALIFIED\n    faultcode = fault.find(\"faultcode\")\n    assert faultcode is not None and \"Server\" in faultcode.text\n    \n    faultstring = fault.find(\"faultstring\")\n    assert faultstring is not None and \"RoutingConditionNotMet\" in faultstring.text\n    \n    detail = fault.find(\"detail\")\n    assert detail is not None\n    err_code = detail.find(\"ErrorCode\")\n    assert err_code is not None and err_code.text == \"RoutingConditionNotMet\"\n\n\n@responses.activate\ndef test_tc_malformed_xml_handling(standard_headers):\n    responses.add(\n        responses.POST,\n        ENDPOINT_URL,\n        body=SOAP_PARSING_FAULT,\n        status=500,\n        content_type=\"text/xml; charset=UTF-8\"\n    )\n\n    response = requests.post(ENDPOINT_URL, data=SO_MALFORMED_PAYLOAD, headers=standard_headers, timeout=10)\n    \n    assert response.status_code == 500\n    root = ET.fromstring(response.text)\n    \n    fault = root.find(f\".//{SOAP_ENV_NS}Fault\")\n    assert fault is not None\n    \n    faultstring = fault.find(\"faultstring\")\n    assert faultstring is not None and \"XML parsing error\" in faultstring.text\n\n\n@responses.activate\ndef test_tc_connection_timeout_handling(standard_headers):\n    responses.add(\n        responses.POST,\n        ENDPOINT_URL,\n        body=requests.exceptions.ConnectTimeout(\"Connection timed out\")\n    )\n\n    with pytest.raises(requests.exceptions.ConnectTimeout):\n        requests.post(ENDPOINT_URL, data=SO_VALID_PAYLOAD, headers=standard_headers, timeout=5)\n"
   },
   "risks": [
     {
-      "risk": "Unattached Process Elements (Dead Code)",
-      "consequence": "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) and CallActivity_86 (Content Modifier for OrganizationId) exist in the BPMN model but have no sequence flow connections. Expected validations or validations for OrderCodeValid are not executed during runtime, potentially routing invalid orders.",
-      "mitigation": "Automated pipeline tests verify that routing decisions depend directly on explicit XML elements or externalized parameters. A lint check flags unconnected nodes in CI before deployment."
+      "risk": "Silent message termination on unhandled routing exceptions",
+      "consequence": "Messages that do not meet Glovia_Route_SalesOrder or Glovia_Route2_ReturnSalesOrder land on Escalation End (EndEvent_11) with ErrorCode 'RoutingConditionNotMet'. If sender does not handle SOAP Faults, sales orders are lost without notice.",
+      "mitigation": "Suite validates TC_ROUTER_DEFAULT_ESCALATION_03 asserting SOAP Fault return with 'RoutingConditionNotMet' error code; monitoring alarms must track Escalated message instances in CPI."
     },
     {
-      "risk": "Escalation EndEvent silently halting message delivery",
-      "consequence": "EndEvent_11 raises an escalation 'RoutingConditionNotMet'. Because returnExceptionToSender is set to false in collaboration properties, the sender receives a normal acknowledgment while the message stops without error escalation or receiver dispatch.",
-      "mitigation": "TC_GLOVIA_003 specifically checks the escalation path and asserts that the escalation code is logged in the Message Processing Log (MPL) to trigger alerting."
+      "risk": "Property loss on exception subprocess body overwrite",
+      "consequence": "If CallActivity_97 attempts to restore InputPayload when the property was never initialized (e.g. failure at CallActivity_4), the message payload becomes empty null string in Log_Payload.gsh.",
+      "mitigation": "Set Message headers (CallActivity_4) is verified as the immediate step after MessageStartEvent to guarantee property 'InputPayload' instantiation before routing or mapping."
     },
     {
-      "risk": "Payload Loss during Mapping Failures",
-      "consequence": "If Message Mapping fails due to unexpected XML constructs or schema deviations, the enriched message body could be lost or incomplete for reprocessing.",
-      "mitigation": "CallActivity_4 sets ${in.body} into property 'InputPayload' immediately at entry. CallActivity_97 and CallActivity_100 ensure the original payload is restored and appended as an attachment in MPL before ErrorEndEvent EndEvent_95 is reached (covered by TC_GLOVIA_004)."
-    },
-    {
-      "risk": "Parallel Multicast with Single Branch",
-      "consequence": "ParallelGateway_74 is configured as a Parallel Multicast but only contains one outgoing flow (SequenceFlow_109) to ExclusiveGateway_80. If another branch is added without a join gateway, race conditions and duplicate executions occur.",
-      "mitigation": "Coverage analysis and unit assertions ensure that message sequencing is validated and single-branch routing behavior remains deterministic."
+      "risk": "Dangling unlinked flow components in iFlow bundle",
+      "consequence": "CallActivity_86 (Content Modifier extracting OrganizationId) and CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) are defined in definitions but detached from sequence flows, creating architectural ambiguity and dead code.",
+      "mitigation": "Test suite asserts routing logic based on router expressions; coverage analysis documents dead-code fragments for refactoring/removal."
     }
   ],
   "coverage_analysis": {
     "target_coverage_percent": 100,
     "coverage_by_component": {
-      "Sender_SOAP_Adapter": "100%",
-      "CallActivity_4_Set_Message_headers": "100%",
-      "ParallelGateway_74_Multicast": "100%",
-      "ExclusiveGateway_80_Router": "100%",
-      "SequenceFlow_82_SalesOrder": "100%",
-      "CallActivity_102_MessageMapping": "100%",
-      "CallActivity_13_CallHeaders": "100%",
-      "EndEvent_2_MessageEnd": "100%",
-      "SequenceFlow_113_SOReturn": "100%",
-      "CallActivity_71_CallHeaders": "100%",
-      "EndEvent_9_MessageEnd": "100%",
-      "SequenceFlow_110_Default": "100%",
-      "EndEvent_11_EscalationEnd": "100%",
-      "SubProcess_91_ExceptionSubprocess": "100%",
-      "CallActivity_97_ReadPayloadProperty": "100%",
-      "CallActivity_100_LogPayloadScript": "100%",
-      "EndEvent_95_ErrorEnd": "100%",
-      "CallActivity_77_Dead_Code": "0%",
-      "CallActivity_86_Dead_Code": "0%"
+      "MessageFlow_114 (SOAP Inbound)": "100%",
+      "CallActivity_4 (Set Message headers)": "100%",
+      "ParallelGateway_74 (Parallel Multicast)": "100%",
+      "ExclusiveGateway_80 (Router)": "100%",
+      "SequenceFlow_82 (SalesOrder Route)": "100%",
+      "SequenceFlow_113 (SO Return Route)": "100%",
+      "SequenceFlow_110 (Default Escalation Route)": "100%",
+      "CallActivity_102 (Message Mapping 1)": "100%",
+      "CallActivity_13 (Interface_Generic_Headers)": "100%",
+      "CallActivity_71 (Interface_Generic_Headers)": "100%",
+      "EndEvent_2 (Order End)": "100%",
+      "EndEvent_9 (Return End)": "100%",
+      "EndEvent_11 (Escalation End)": "100%",
+      "SubProcess_91 (Exception Subprocess 1)": "100%",
+      "CallActivity_86 (Detached Content Modifier)": "0%",
+      "CallActivity_77 (Detached Groovy Script)": "0%"
     },
     "uncovered_paths": [
-      "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) and CallActivity_86 (Content Modifier extracting OrganizationId) are disconnected in the BPMN process definition and unreachable via sequence flows from StartEvent_2."
+      "CallActivity_86 and CallActivity_77 have no incoming or outgoing SequenceFlow edges in Process_1 BPMN plane (orphaned elements in the exported XML)."
     ],
     "coverage_recommendations": [
-      "Connect CallActivity_77 and CallActivity_86 into the main sequence flow between CallActivity_4 and ParallelGateway_74 if order validation and organization ID extraction are business requirements.",
-      "If CallActivity_77 and CallActivity_86 are obsolete artifacts, delete them from the iFlow model to achieve true 100% executable model coverage."
+      "Remove orphaned elements CallActivity_86 and CallActivity_77 from the iFlow model, or connect them prior to ExclusiveGateway_80 if header pre-validation was intended.",
+      "Deploy the automated pytest mock suite into CI pipeline to continuously assert 100% executable path coverage across all active sequence flows."
     ]
   }
 }

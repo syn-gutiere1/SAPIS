@@ -15,14 +15,14 @@
   },
   "artifacts": {
     "scenarios": 5,
-    "risks": 4,
+    "risks": 3,
     "testdata_files": 4,
     "files": [
       "cases.json",
-      "testdata/sales_order_valid.xml",
-      "testdata/sales_order_return.xml",
-      "testdata/sales_order_unmatched.xml",
-      "testdata/sales_order_corrupted.xml",
+      "testdata/soap_sales_order_valid.xml",
+      "testdata/soap_so_return_valid.xml",
+      "testdata/soap_unmatched_route.xml",
+      "testdata/soap_malformed_input.xml",
       "test_flow.py",
       "risks.json",
       "coverage.json",
@@ -35,21 +35,21 @@
     "base_url": "https://portkey.syngenta.com/v1",
     "temperature": 0.2,
     "language_code": "en_US",
-    "prompt_tokens": 15320,
-    "completion_tokens": 6740,
-    "total_tokens": 22060
+    "prompt_tokens": 15566,
+    "completion_tokens": 6784,
+    "total_tokens": 22350
   },
   "prompt": {
     "file": "prompt/prompt_template.txt",
-    "sha256": "abf33ec1a452449c6ecd3b32c093b8d31d5db80d053cff58fbd1d03f5ce79ddb"
+    "sha256": "668bf588c578a25ea28d89e0d873ff08aaac5501f9e2d3bcb561da8a50b375bc"
   },
   "truncated": [],
   "attempts": 1,
-  "duration_seconds": 32.614,
-  "generated_at": "2026-10-15T15:03:45Z",
+  "duration_seconds": 34.269,
+  "generated_at": "2026-10-15T17:12:40Z",
   "environment": {
-    "github_run_id": "38756833578",
-    "github_sha": "c982c52858ad6babacd4e232b294a3734f33eb4a",
+    "github_run_id": "38775267370",
+    "github_sha": "09df2fec93d15187545add909470341839ab3027",
     "github_ref": "refs/heads/sap-is",
     "github_repository": "syn-gutiere1/SAPIS"
   }
