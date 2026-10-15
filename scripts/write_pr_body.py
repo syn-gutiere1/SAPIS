@@ -30,13 +30,18 @@ CHECKLIST = """## What to review
 - [ ] `testdata/**` contains no personal or real data
 - [ ] `test_flow.py` was read — **it is AI-generated code that runs in CI**
 - [ ] If the iFlow has `.groovy`, the real behavior was executed (not just simulated)
+- [ ] The **Groovy harness** column is green; a pytest-only pass does not validate a script
 
-> Full HTML reports are in the **Artifacts** tab of this run.
+> The generated suite and the Groovy harness are separate verdicts. The table shows
+> both: a green suite with a red harness means the real script raised or an assertion
+> did not hold, and the change must not be merged.
+>
+> Full reports, including `dashboard.html`, are in the **Artifacts** tab of this run.
 """
 
 TABLE_HEADER = (
-    "| iFlow | Tests | Passed | Failed | Error | Skipped |",
-    "|---|---|---|---|---|---|",
+    "| iFlow | Tests | Passed | Failed | Error | Skipped | Groovy harness |",
+    "|---|---|---|---|---|---|---|",
 )
 
 
@@ -78,12 +83,43 @@ def _iflow_name(manifest: dict, path: Path) -> str:
     return path.parent.name or "?"
 
 
+def _groovy_cell(path: Path) -> str:
+    """
+    Verdict of the Groovy harness for one iFlow, as a table cell.
+
+    This is a separate verdict from the generated suite, and the reason the column
+    exists: a run can have every pytest test green while the real script does not
+    even compile. Reporting only pytest made the PR body say "0 failed, 0 errors"
+    for an iFlow whose script was raising on every call.
+    """
+    junit = path.parent / "junit-groovy.xml"
+    if not junit.is_file():
+        return "not run"
+
+    total, passed, failed, errors, skipped = count_junit(junit)
+    if total == "-":
+        return "not run"
+
+    broken = 0
+    if isinstance(failed, int):
+        broken += failed
+    if isinstance(errors, int):
+        broken += errors
+
+    if broken:
+        return f"**{broken} failed** of {total}"
+    return f"{passed} passed of {total}"
+
+
 def _table_row(manifest: dict, path: Path, junit_path: Path) -> str:
     total, passed, failed, errors, skipped = count_junit(junit_path)
     name = _iflow_name(manifest, path)
     if manifest.get("generation_skipped"):
         name = f"{name} (generation skipped)"
-    return f"| `{name}` | {total} | {passed} | {failed} | {errors} | {skipped} |"
+    return (
+        f"| `{name}` | {total} | {passed} | {failed} | {errors} | {skipped} "
+        f"| {_groovy_cell(path)} |"
+    )
 
 
 def _risks_section(manifest: dict, path: Path, plans_dir: Path) -> list[str]:
@@ -131,22 +167,64 @@ def build_body(evidence_dir: Path, commit: str | None, plans_root: Path | None =
     lines += ["## Evidence per iFlow", "", *TABLE_HEADER]
 
     if not manifests:
-        lines.append("| _(no evidence found)_ | - | - | - | - | - |")
+        lines.append("| _(no evidence found)_ | - | - | - | - | - | - |")
     else:
         for path in manifests:
             try:
                 manifest = json.loads(path.read_text(encoding="utf-8"))
             except json.JSONDecodeError:
-                lines.append(f"| `{path.parent.name}` | - | - | - | - | - |")
+                lines.append(f"| `{path.parent.name}` | - | - | - | - | - | - |")
                 continue
             lines.append(_table_row(manifest, path, path.parent / "junit.xml"))
             lines += _risks_section(
                 manifest, path, _locate_plans(path, plans_root)
             )
 
+    lines += _harness_warning(manifests)
     lines += _suggestions_section(evidence_dir)
     lines += ["", CHECKLIST]
     return "\n".join(lines) + "\n"
+
+
+def _harness_warning(manifests: list[Path]) -> list[str]:
+    """
+    A prominent warning when the harness failed for any iFlow.
+
+    The table cell is easy to miss among green numbers, and this is the failure
+    that must block a merge: the real script raised or an assertion did not hold,
+    while the generated suite - which simulates the rule in Python - stayed green.
+    """
+    broken: list[str] = []
+    for path in manifests:
+        junit = path.parent / "junit-groovy.xml"
+        if not junit.is_file():
+            continue
+        total, _passed, failed, errors, _skipped = count_junit(junit)
+        if total == "-":
+            continue
+        count = (failed if isinstance(failed, int) else 0) + (
+            errors if isinstance(errors, int) else 0
+        )
+        if count:
+            try:
+                manifest = json.loads(path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                manifest = {}
+            broken.append(f"`{_iflow_name(manifest, path)}` ({count})")
+
+    if not broken:
+        return []
+
+    return [
+        "",
+        "> [!CAUTION]",
+        "> **The Groovy harness failed for " + ", ".join(broken) + ".**",
+        ">",
+        "> The generated suite passing does not clear the change: the harness executes the",
+        "> real `.groovy` against the reviewed fixtures, and it raised or an assertion did not",
+        "> hold. Read the suggested fixes below and the `groovy_logs.txt` artifact before",
+        "> merging.",
+    ]
 
 
 def _suggestions_section(evidence_dir: Path) -> list[str]:

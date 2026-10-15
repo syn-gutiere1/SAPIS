@@ -600,9 +600,12 @@ jobs:
         with:
           path: ${{ env.EVIDENCE_DIR }}
 
-      # `git ls-remote` instead of a 403 from the API: this reads which branches
-      # exist without needing the pull-request permission, which makes the
-      # distinction between "no PR to update" and "not allowed to create PRs".
+      # The branch is checked with the API, not with `git ls-remote`. The checkout
+      # strips the credentials from the remote, so `ls-remote` failed with an
+      # authentication error - which this step then reported as "the base branch
+      # does not exist" and turned into an `exit 1`. The job aborted before it ever
+      # tried to create the PR, so the PR was never updated again: every run after
+      # the first left a stale body behind while the log blamed a missing branch.
       - name: Check whether PR creation is permitted
         id: permission
         env:
@@ -612,14 +615,25 @@ jobs:
           BASE="${{ github.event.repository.default_branch }}"
           echo "base=${BASE}" >> "$GITHUB_OUTPUT"
 
-          if ! git ls-remote --exit-code --heads origin "$BASE" > /dev/null 2>&1; then
-            echo "::error::The base branch '$BASE' does not exist on the remote; cannot open a PR into it."
+          if [ -z "$BASE" ]; then
+            echo "::error::Could not determine the default branch from the event payload."
+            exit 1
+          fi
+
+          # `gh api` answers 404 when the branch is absent and 403 when the token
+          # cannot read it; only the first means "cannot open a PR into it".
+          if ! BRANCH_JSON="$(gh api "repos/${{ github.repository }}/branches/${BASE}" 2>&1)"; then
+            if printf '%s' "$BRANCH_JSON" | grep -q '404'; then
+              echo "::error::The base branch '${BASE}' does not exist on the remote; cannot open a PR into it."
+            else
+              echo "::error::Could not read the base branch '${BASE}': ${BRANCH_JSON}"
+            fi
             exit 1
           fi
           echo "Base branch: $BASE"
 
           # Read-only probe. It cannot create anything, so a failure here means
-          # the token cannot even read the PR state.
+          # the token cannot even read the pull request state.
           if ! gh api "repos/${{ github.repository }}/pulls?state=open&head=${{ github.repository_owner }}:${{ github.ref_name }}&per_page=1" > /dev/null 2>&1; then
             echo "::warning::Could not read the pull request state; proceeding to the write."
           fi
