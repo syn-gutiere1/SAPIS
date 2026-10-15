@@ -1,15 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns1="http://soap.sforce.com/2005/09/outbound" xmlns:ns2="urn:sobject.enterprise.soap.sforce.com">
+  <SOAP:Header/>
   <SOAP:Body>
-    <ns1:notifications xmlns:ns1="http://soap.sforce.com/2005/09/outbound" xmlns:ns2="urn:sobject.enterprise.soap.sforce.com">
+    <ns1:notifications>
       <ns1:Notification>
-        <ns1:Id>04k000000000003CCC</ns1:Id>
+        <ns1:Id>04k5g000000UNMATCH</ns1:Id>
         <ns1:sObject>
-          <ns2:Id>a01000000000003CCC</ns2:Id>
+          <ns2:Id>a0B5g000000UNMATCH</ns2:Id>
           <ns2:giic_OrderTypeCode__c>UNKNOWN_CODE</ns2:giic_OrderTypeCode__c>
-          <ns2:giic_OrderNumber__c>INV-UNKNOWN</ns2:giic_OrderNumber__c>
-          <ns2:giic_OrderType__c>Draft</ns2:giic_OrderType__c>
-          <ns2:giic_TotalAmount__c>0.00</ns2:giic_TotalAmount__c>
         </ns1:sObject>
       </ns1:Notification>
     </ns1:notifications>

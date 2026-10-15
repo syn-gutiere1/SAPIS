@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns1="http://soap.sforce.com/2005/09/outbound" xmlns:ns2="urn:sobject.enterprise.soap.sforce.com">
+  <SOAP:Header/>
+  <SOAP:Body>
+    <ns1:notifications>
+      <ns1:Notification>
+        <ns1:Id>04k5g000000CORRUPT</ns1:Id>
+        <ns1:sObject>
+          <ns2:giic_OrderTypeCode__c>YORB</ns2:giic_OrderTypeCode__c>
+          <!-- Corrupted payload causing MappingException -->
+          <ns2:InvalidStructure>&lt;![CDATA[NonParsableData]]&gt;</ns2:InvalidStructure>
+        </ns1:sObject>
+      </ns1:Notification>
+    </ns1:notifications>
+  </SOAP:Body>
+</SOAP:Envelope>

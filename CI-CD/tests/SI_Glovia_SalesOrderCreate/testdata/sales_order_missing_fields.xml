@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns1="http://soap.sforce.com/2005/09/outbound" xmlns:ns2="urn:sobject.enterprise.soap.sforce.com">
+  <SOAP:Header/>
+  <SOAP:Body>
+    <ns1:notifications>
+      <ns1:Notification>
+        <ns1:Id>04k5g000000EMPTY</ns1:Id>
+        <ns1:sObject>
+        </ns1:sObject>
+      </ns1:Notification>
+    </ns1:notifications>
+  </SOAP:Body>
+</SOAP:Envelope>

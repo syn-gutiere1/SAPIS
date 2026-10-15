@@ -1,22 +1,22 @@
 [
   {
-    "risk": "Message payload loss during exception handling in SubProcess_91",
-    "consequence": "If CallActivity_4 fails before setting 'InputPayload' property, CallActivity_97 reads null, causing Log_Payload to log empty data and obscuring root cause analysis.",
-    "mitigation": "Unit tests assert that CallActivity_4 sets ${in.body} into property.InputPayload immediately at process start, and test_exception_subprocess_execution verifies payload restoration."
+    "risk": "Unmatched Routing Condition Default Escalation (EndEvent_11)",
+    "consequence": "Inbound Glovia messages with unanticipated OrderTypeCode values are terminated at EscalationEnd without routing to an ERP/CRM receiver, potentially leaving orders unfulfilled.",
+    "mitigation": "Scenario SCN-GLOVIA-03 specifically validates that the default path triggers 'RoutingConditionNotMet' escalation code and alerts operational monitoring via CPI alert dashboards."
   },
   {
-    "risk": "Silent message termination without alerting on routing escalation",
-    "consequence": "Messages meeting neither SalesOrder nor SO Return criteria route to EndEvent_11 (EscalationEndEvent); without monitoring on EscalationCode 'RoutingConditionNotMet', order drops unnoticed.",
-    "mitigation": "Scenario SCN-GLOVIA-003 and test_default_route_escalation validate that the escalation error code is explicitly emitted and HTTP status/alerts are captured."
+    "risk": "Loss of Original Inbound Payload during Downstream Exception",
+    "consequence": "If mapping fails in CallActivity_102, intermediate message alterations could mask root cause data during triage.",
+    "mitigation": "CallActivity_4 captures ${in.body} into property 'InputPayload' at entry; SubProcess_91 restores ${property.InputPayload} into message body before invoking Log_Payload script. Verified by SCN-GLOVIA-04."
   },
   {
-    "risk": "Orphaned or unlinked activities (CallActivity_77 and CallActivity_86)",
-    "consequence": "The BPMN definitions contain CallActivity_77 (GLOVIA_Conditioncheck) and CallActivity_86 (XPath extraction) outside normal sequence flows, risking dead code deployment and logic drift.",
-    "mitigation": "Unit test suite verifies routing conditions against known code sets ('YORB', 'YICB', 'POR', 'MNZ', 'PLM') directly and highlights unlinked activities in coverage reporting."
+    "risk": "Missing Namespace or Empty OrderTypeCode Field in SOAP Payload",
+    "consequence": "XPath evaluations in Router condition (ExclusiveGateway_80) return null or empty string, failing conditions and triggering unexpected fallback.",
+    "mitigation": "Scenario SCN-GLOVIA-05 ensures empty/missing order code elements are caught safely and handled through the default escalation channel rather than crashing XML parsers."
   },
   {
-    "risk": "SOAP sender adapter parameter mismatches and security exceptions",
-    "consequence": "The inbound SOAP adapter specifies WSSecurity 'VerifyMessage' with SHA1 and RoleBased auth. Inbound requests with missing signatures or unauthorized roles are rejected at runtime.",
-    "mitigation": "Integration contract tests mock SOAP security verification headers and simulate auth boundaries prior to downstream execution."
+    "risk": "Unauthorized Inbound Call Rejection at SOAP Adapter",
+    "consequence": "Untrusted or unauthorized systems submitting order updates could compromise data integrity or fail quietly.",
+    "mitigation": "Scenario SCN-GLOVIA-06 validates role-based authorization check (ESBMessaging.send) enforcement configured on MessageFlow_114."
   }
 ]

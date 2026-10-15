@@ -1,37 +1,44 @@
 [
   {
-    "id": "SCN-GLOVIA-001",
-    "name": "Happy Path - Standard Sales Order Processing",
-    "trigger": "Inbound SOAP message with valid OrderTypeCode 'YORB' routed to SalesOrder branch",
-    "expected_outcome": "Message is processed through Message Mapping 1, headers enriched, and ends at EndEvent_2 with HTTP 200/OneWay ACK",
-    "validates": "CallActivity_4 header enrichment, SequenceFlow_82 routing expression, CallActivity_102 mapping execution, CallActivity_13 header logging"
+    "id": "SCN-GLOVIA-01",
+    "name": "Standard Sales Order Creation Flow",
+    "trigger": "Inbound SOAP message with valid Sales Order OrderTypeCode (e.g., 'YORB')",
+    "expected_outcome": "Message routed via SalesOrder branch (SequenceFlow_82), Test_Mapping executed, custom header logging executed via Interface_Generic_Headers, terminates at EndEvent_2 with HTTP 202/200 OK.",
+    "validates": "CallActivity_4 (Property InputPayload and generic headers), ParallelGateway_74, ExclusiveGateway_80 (SequenceFlow_82), CallActivity_102 (Message Mapping), CallActivity_13 (Header logging), EndEvent_2"
   },
   {
-    "id": "SCN-GLOVIA-002",
-    "name": "Happy Path - Return Sales Order Processing",
-    "trigger": "Inbound SOAP message with return order indicator satisfying ReturnSalesOrder route condition",
-    "expected_outcome": "Message is routed via SequenceFlow_113 to CallActivity_71 and terminates successfully at EndEvent_9",
-    "validates": "ExclusiveGateway_80 SO Return create branch condition evaluation and CallActivity_71 generic header processing"
+    "id": "SCN-GLOVIA-02",
+    "name": "Sales Order Return Processing Flow",
+    "trigger": "Inbound SOAP message matching SO Return criteria (e.g., OrderTypeCode 'ZRET' or Return condition)",
+    "expected_outcome": "Message routed via SequenceFlow_113 to CallActivity_71, generic headers logged, message terminates at EndEvent_9 without invoking Sales Order mapping.",
+    "validates": "ExclusiveGateway_80 routing logic for SO Return condition (SequenceFlow_113), CallActivity_71, EndEvent_9"
   },
   {
-    "id": "SCN-GLOVIA-003",
-    "name": "Boundary & Routing Exception - Unmatched Route Escalation",
-    "trigger": "Inbound SOAP message with non-qualifying order criteria triggering default gateway path",
-    "expected_outcome": "ExclusiveGateway_80 falls back to default SequenceFlow_110, raising EscalationEndEvent 'RoutingConditionNotMet' at EndEvent_11",
-    "validates": "Default route behavior, EscalationEndEvent error code generation, and routing fault containment"
+    "id": "SCN-GLOVIA-03",
+    "name": "Routing Condition Unmatched - Default Escalation",
+    "trigger": "Inbound SOAP message with unmatched OrderTypeCode (e.g., 'UNKNOWN')",
+    "expected_outcome": "Message routes to default path SequenceFlow_110, triggering Escalation End Event EndEvent_11 with ErrorCode 'RoutingConditionNotMet'.",
+    "validates": "ExclusiveGateway_80 default path (SequenceFlow_110) and EscalationEndEvent EndEvent_11 error code handling"
   },
   {
-    "id": "SCN-GLOVIA-004",
-    "name": "Error Handling - Mapping Failure and Exception Subprocess Invocation",
-    "trigger": "Inbound SOAP message containing malformed XML structure causing Message Mapping (CallActivity_102) failure",
-    "expected_outcome": "Exception caught by SubProcess_91; CallActivity_97 restores original payload from property.InputPayload, CallActivity_100 logs error payload, terminating at EndEvent_95",
-    "validates": "SubProcess_91 ErrorStartEvent, property.InputPayload retention in CallActivity_4, attachment creation in Log_Payload script, EndErrorEvent"
+    "id": "SCN-GLOVIA-04",
+    "name": "Transformation Failure Triggers Exception Subprocess",
+    "trigger": "Inbound SOAP message matching Sales Order route but with corrupted body triggering MessageMapping exception",
+    "expected_outcome": "Exception SubProcess_91 caught by StartEvent_92, CallActivity_97 enriches message body from property 'InputPayload', CallActivity_100 logs original payload, flow terminates at EndEvent_95 (EndErrorEvent).",
+    "validates": "SubProcess_91, CallActivity_97 (enricher restoring body from ${property.InputPayload}), CallActivity_100 (Log_Payload), and EndEvent_95"
   },
   {
-    "id": "SCN-GLOVIA-005",
-    "name": "Edge Case - Null/Empty Optional Metadata Headers",
-    "trigger": "Inbound SOAP request with minimal payload missing custom header configuration values (Region, Country, TimeStamp)",
-    "expected_outcome": "Content Modifier handles missing properties gracefully, Interface_Generic_Headers skips null property logs without NPE, message completes",
-    "validates": "Null-safety in Groovy scripts and default expression fallbacks in Content Modifier CallActivity_4"
+    "id": "SCN-GLOVIA-05",
+    "name": "Boundary Condition - Missing OrderTypeCode Node",
+    "trigger": "Inbound SOAP message with empty or absent <ns2:giic_OrderTypeCode__c> element",
+    "expected_outcome": "XPath router evaluates condition to false; routes safely to default Escalation branch without throwing uncaught null pointer exception.",
+    "validates": "XPath resilience on ExclusiveGateway_80 and fallback to EndEvent_11"
+  },
+  {
+    "id": "SCN-GLOVIA-06",
+    "name": "Security Authorization Rejection",
+    "trigger": "Inbound SOAP call without required ESBMessaging.send user role or invalid client certificate",
+    "expected_outcome": "SOAP sender adapter rejects the incoming request with HTTP 401 Unauthorized or 403 Forbidden before reaching StartEvent_2.",
+    "validates": "Inbound SOAP adapter endpoint security configuration (RoleBased / ESBMessaging.send)"
   }
 ]

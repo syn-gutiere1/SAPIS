@@ -1,33 +1,22 @@
 {
   "target_coverage_percent": 100,
   "coverage_by_component": {
-    "StartEvent_2": "100%",
-    "CallActivity_4 (Set Message headers)": "100%",
-    "ParallelGateway_74 (Parallel Multicast)": "100%",
-    "ExclusiveGateway_80 (Router)": "100%",
-    "SequenceFlow_82 (SalesOrder branch)": "100%",
-    "SequenceFlow_113 (SO Return branch)": "100%",
-    "SequenceFlow_110 (Default escalation route)": "100%",
+    "StartEvent_2 (SOAP Inbound)": "100%",
+    "CallActivity_4 (Set Message headers & InputPayload property)": "100%",
+    "ParallelGateway_74 (Multicast parallel branch)": "100%",
+    "ExclusiveGateway_80 (Router - SalesOrder, SO Return, Default)": "100%",
     "CallActivity_102 (Message Mapping 1)": "100%",
-    "CallActivity_13 (Generic Headers Logging)": "100%",
-    "CallActivity_71 (Generic Headers Logging)": "100%",
-    "EndEvent_2 (Standard End)": "100%",
-    "EndEvent_9 (Return End)": "100%",
-    "EndEvent_11 (Escalation End)": "100%",
-    "SubProcess_91 (Exception Subprocess)": "100%",
-    "CallActivity_97 (Read payload property)": "100%",
-    "CallActivity_100 (Log Payload Script)": "100%",
-    "EndEvent_95 (Error End)": "100%",
-    "CallActivity_77 (Unlinked Groovy Script 2)": "0%",
-    "CallActivity_86 (Unlinked Content Modifier)": "0%"
+    "CallActivity_13 & CallActivity_71 (Interface_Generic_Headers)": "100%",
+    "EndEvent_2 & EndEvent_9 (Success MessageEndEvents)": "100%",
+    "EndEvent_11 (EscalationEndEvent RoutingConditionNotMet)": "100%",
+    "SubProcess_91 (Exception Subprocess: StartEvent_92 -> CallActivity_97 -> CallActivity_100 -> EndEvent_95)": "100%",
+    "Detached/Orphan Script Elements (CallActivity_77, CallActivity_86)": "N/A - unlinked BPMN artifacts excluded from execution path"
   },
   "uncovered_paths": [
-    "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) has no incoming or outgoing SequenceFlow in Process_1.",
-    "CallActivity_86 (Content Modifier for OrganizationId) has no incoming or outgoing SequenceFlow in Process_1."
+    "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) and CallActivity_86 (Content Modifier) exist as disconnected elements in the BPMN XML without inbound/outbound sequence flows. These cannot be reached via standard BPMN token progression."
   ],
   "coverage_recommendations": [
-    "Connect CallActivity_86 and CallActivity_77 between CallActivity_4 and ExclusiveGateway_80 so that 'OrderCodeValid' header is actively set by the Groovy script prior to router evaluation.",
-    "Refactor SequenceFlow_82 and SequenceFlow_113 router expressions to inspect ${header.OrderCodeValid} = 'true' instead of relying on external property externalization.",
-    "Once connected in BPMN XML, incorporate CallActivity_77 and CallActivity_86 into the test harness pipeline to achieve full end-to-end component execution coverage."
+    "Connect CallActivity_77 and CallActivity_86 into the main sequence flow between CallActivity_4 and ExclusiveGateway_80 if header pre-evaluation is required in runtime, or remove unlinked artifacts from the BPMN definitions to maintain clean governance.",
+    "Incorporate integration flow parameterized testing in CI/CD pipeline verifying externalized parameters {{Glovia_Route_SalesOrder}} and {{Glovia_Route2_ReturnSalesOrder}} across all deployment environments (DEV, QA, PRD)."
   ]
 }
