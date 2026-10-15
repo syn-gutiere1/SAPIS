@@ -493,6 +493,7 @@ python scripts/build_dashboard.py \
   --coverage CI-CD/test-plans/SI_Glovia_SalesOrderCreate/coverage.json \
   --manifest CI-CD/reports/SI_Glovia_SalesOrderCreate/manifest.json \
   --junit CI-CD/reports/SI_Glovia_SalesOrderCreate/junit.xml \
+  --junit-groovy CI-CD/reports/SI_Glovia_SalesOrderCreate/junit-groovy.xml \
   --suggestions CI-CD/reports/SI_Glovia_SalesOrderCreate/ai_fix_suggestions.md \
   --output CI-CD/reports/SI_Glovia_SalesOrderCreate/dashboard.html
 ```
@@ -501,9 +502,15 @@ It is written to `CI-CD/reports/<iFlow>/dashboard.html` and committed with the r
 of the evidence. The tabs are Overview, Tests, Scenarios, Risks, Coverage and
 Suggested fixes; the hash in the URL selects a tab, so a link can point at one.
 
+The **Tests** tab shows both suites separately, each with its own counters, because
+they are separate verdicts: the generated suite simulates the flow in Python while the
+harness compiles and executes the real scripts. The overall verdict is the worse of
+the two, so a green suite with a red harness reads as a failed run rather than as
+"5 passed, 0 failed" with the script's result nowhere on the page.
+
 ### Getting the dashboard after a push
 
-The workflow runs on every push to `sap-is` that changes an `.iflw` or a `.groovy`,
+The workflow runs on every push to `sap-is` that changes an `.iflw` or a script,
 generates the dashboard and **commits it back** to the same branch. Nothing has to be
 built by hand.
 

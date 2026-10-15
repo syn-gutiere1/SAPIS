@@ -537,6 +537,7 @@ jobs:
             --coverage "$PLANS_DIR/coverage.json" \
             --manifest "$REPORTS_DIR/manifest.json" \
             --junit "$REPORTS_DIR/junit.xml" \
+            --junit-groovy "$REPORTS_DIR/junit-groovy.xml" \
             --suggestions "$REPORTS_DIR/ai_fix_suggestions.md" \
             --output "$REPORTS_DIR/dashboard.html"
 
