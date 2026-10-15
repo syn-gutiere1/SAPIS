@@ -512,6 +512,12 @@ jobs:
           name: ${{ env.ARTIFACT_NAME }}
           if-no-files-found: warn
           retention-days: 30
+          # `upload-artifact` skips hidden files by default - its glob runs with
+          # `includeHiddenFiles: false` - and `.pr/` starts with a dot. Without this
+          # the staged suggestions were silently dropped from the artifact, so the
+          # `open-pr` job never saw them and the PR body carried none while every
+          # step involved reported success.
+          include-hidden-files: true
           path: |
             ${{ env.REPORTS_DIR }}/**
             ${{ env.TESTS_DIR }}/**
