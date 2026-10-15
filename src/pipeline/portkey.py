@@ -413,12 +413,24 @@ def suggest_fixes(
     precisely when the log is long - the case where the model most needs it.
     """
     settings = settings or Settings.from_env()
+    has_failure = bool(test_output.strip())
+    if has_failure:
+        situacao = (
+            "The tests generated for it have FAILED. Analyze the failure logs alongside "
+            "the original flow and provide concrete suggestions on what needs to be fixed "
+            "in the SAP IS XML or the Groovy scripts. "
+        )
+    else:
+        situacao = (
+            "The generated tests PASSED. There is no failure to diagnose, so instead "
+            "review the flow and its scripts for what could still go wrong: unhandled "
+            "paths, fragile assumptions, and the risks listed in the request. "
+        )
+
     system_prompt = (
-        "You are a senior SAP integration engineer. The tests generated for the SAP "
-        "Integration Flow have failed. Analyze the failure logs alongside the original "
-        "flow. Provide concrete suggestions on what needs to be fixed in the SAP IS XML or "
-        "the Groovy scripts. "
-        "Identify which layer a failure belongs to - the iFlow, a Groovy script, the "
+        "You are a senior SAP integration engineer analysing a SAP Integration Flow. "
+        + situacao
+        + "Identify which layer a failure belongs to - the iFlow, a Groovy script, the "
         "generated test, or the test harness itself - and say so explicitly. Do not "
         "propose changes for a failure caused by the harness or by missing test data. "
         "Answer in the language corresponding to the ISO code "
@@ -437,6 +449,27 @@ def suggest_fixes(
             f"{json.dumps(risks, ensure_ascii=False, indent=2)[:8_000]}\n\n"
         )
 
+    logs_block = (
+        "--- FAILURE LOGS ---\n" + f"{test_output[-max_output_chars:]}\n\n"
+        if has_failure
+        else ""
+    )
+
+    if has_failure:
+        question = (
+            "Based on the failure logs, what is misconfigured in the SAP iflow or "
+            "scripts? How do we fix it? If the evidence points at the harness, the "
+            "generated test or missing fixtures rather than the artifact, say that "
+            "instead of proposing an edit.\n\n"
+        )
+    else:
+        question = (
+            "The tests pass. Which parts of this flow remain fragile, and what would you "
+            "change to make a future failure less likely? Be concrete and reference the "
+            "step, property or script involved. If the flow looks sound, say so rather "
+            "than inventing work.\n\n"
+        )
+
     prompt = (
         f"{context}\n\n" if context.strip() else ""
     ) + (
@@ -445,11 +478,8 @@ def suggest_fixes(
         "--- GROOVY SCRIPTS ---\n"
         f"{json.dumps(scripts, ensure_ascii=False)[:10_000]}\n\n"
         f"{risks_block}"
-        "--- FAILURE LOGS ---\n"
-        f"{test_output[-max_output_chars:]}\n\n"
-        "Based on the failure logs, what is misconfigured in the SAP iflow or scripts? "
-        "How do we fix it? If the evidence points at the harness, the generated test or "
-        "missing fixtures rather than the artifact, say that instead of proposing an edit.\n\n"
+        f"{logs_block}"
+        f"{question}"
         "Finish with `## Fix Risks`: how to fix or mitigate each risk listed above."
     )
 

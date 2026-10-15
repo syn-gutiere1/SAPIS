@@ -314,11 +314,44 @@ def _fake_text_client(text: str):
     )
 
 
-def test_analyze_failures_requires_logs(artifact: Path, environment, capsys):
-    code = cli.main(["--mode", "analyze-failures", "--source", str(artifact)])
+def test_analyze_failures_without_logs_reviews_the_risks(
+    artifact: Path, environment, tmp_path: Path, capsys
+):
+    """
+    No log means a green run, not a usage error. The risks belong to the artifact, so the
+    analysis still runs and produces the Fix Risks half the dashboard needs.
+    """
+    capturado = {}
 
-    assert code == cli.EXIT_CONFIG
-    assert "--logs is required" in capsys.readouterr().err
+    def _create(**kwargs):
+        capturado["messages"] = kwargs["messages"]
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="## Fix Risks\nok"))],
+            usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1, total_tokens=2),
+            model="test-model",
+        )
+
+    client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=_create))
+    )
+    import unittest.mock as mock
+
+    with mock.patch.object(cli.portkey_mod, "create_client", lambda *a, **k: client):
+        destino = tmp_path / "sug.md"
+        code = cli.main(
+            [
+                "--mode", "analyze-failures",
+                "--source", str(artifact),
+                "--suggestions", str(destino),
+            ]
+        )
+
+    assert code == cli.EXIT_OK
+    assert destino.is_file()
+    # No failure logs section, and the review question instead.
+    prompt = capturado["messages"][1]["content"]
+    assert "--- FAILURE LOGS ---" not in prompt
+    assert "tests pass" in prompt.lower()
 
 
 def test_analyze_failures_missing_log_returns_exit_2(
@@ -333,7 +366,7 @@ def test_analyze_failures_missing_log_returns_exit_2(
     )
 
     assert code == cli.EXIT_CONFIG
-    assert "pytest log not found" in capsys.readouterr().err
+    assert "failure log not found" in capsys.readouterr().err
 
 
 def test_analyze_failures_writes_suggestions(
