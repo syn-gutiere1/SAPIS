@@ -899,5 +899,4 @@
     </bpmndi:BPMNDiagram>
 
 <!-- markdown dashboard validation -->
-<!-- soap fault prompt validation -->
 </bpmn2:definitions>
