@@ -17,7 +17,10 @@ Checks:
   1. network call whose OWN test has no mock. Scoped per block: a mock in another test
      does not cover it, which is how a real call used to pass;
   2. internal or invented host that is neither a namespace URI nor a test host;
-  3. fixed port in a local mock server (collides between suites in parallel).
+  3. fixed port in a local mock server (collides between suites in parallel);
+  4. a SOAP Fault lookup that qualifies a child with the envelope namespace. Those
+     children are unqualified, so the lookup always returns None - a wrong assertion
+     that fails on a correct mock.
 
 Exit codes: 0 = nothing suspicious, 1 = findings, 2 = invalid usage.
 """
@@ -92,6 +95,31 @@ MOCKS = (
     ("monkeypatch", re.compile(r"\bmonkeypatch\b")),
     ("requests_mock", re.compile(r"\brequests_mock\b")),
     ("httpretty", re.compile(r"\bhttpretty\b")),
+)
+
+# In SOAP 1.1 only `Fault` is in the envelope namespace. Its children are UNQUALIFIED, so a
+# lookup that attaches the envelope namespace to one of them returns None.
+#
+# SOAP 1.2 is deliberately NOT included: there the envelope is
+# `http://www.w3.org/2003/05/soap-envelope` and `Code`, `Reason` and `Detail` ARE in that
+# namespace, so qualifying them is correct. A probe asserted otherwise and the probe was
+# wrong.
+SOAP_11_ENVELOPE_URIS = ("http://schemas.xmlsoap.org/soap/envelope/",)
+
+UNQUALIFIED_FAULT_CHILDREN = ("faultcode", "faultstring", "faultactor")
+
+# `{<literal>}faultstring`: the URI written inline in the lookup.
+_NAMESPACE_LITERAL = re.compile(
+    r"""\{\s*["']?(?P<uri>https?://[^}"']+)["']?\s*\}\s*(?P<child>\w+)"""
+)
+
+# `f".//{ENV}faultstring"`: the URI held in a name. Resolved against the assignments below.
+_NAMESPACE_VARIABLE = re.compile(r"""\{\s*(?P<var>[A-Za-z_]\w*)\s*\}\s*(?P<child>\w+)""")
+
+# `ENV = "{http://...}"` or `ENV = "http://..."`, with or without an f-prefix nearby.
+_URI_ASSIGNMENT = re.compile(
+    r"""^(?P<indent>\s*)(?P<name>[A-Za-z_]\w*)\s*=\s*["']"""
+    r"""(?:\{(?P<braced>https?://[^}"']+)\}|(?P<plain>https?://[^"']+))["']"""
 )
 
 FIXED_PORT_PATTERNS = (
@@ -284,6 +312,54 @@ def check(path: Path, allowed: set[str] | None = None) -> list[Finding]:
                 )
             )
             break
+
+    # --- SOAP Fault namespace ---------------------------------------------
+    # A lookup that qualifies a Fault child with the envelope namespace always returns
+    # None. It is a wrong assertion, not a network risk, and it made every generated suite
+    # fail on a correct mock.
+    # Names assigned a SOAP 1.1 envelope URI anywhere in the file, so `{ENV}faultstring`
+    # can be resolved without executing anything.
+    envelope_names: set[str] = set()
+    for line in lines:
+        assignment = _URI_ASSIGNMENT.match(line)
+        if not assignment:
+            continue
+        uri = (assignment.group("braced") or assignment.group("plain") or "").rstrip("/")
+        if uri.lower() in {known.rstrip("/").lower() for known in SOAP_11_ENVELOPE_URIS}:
+            envelope_names.add(assignment.group("name"))
+
+    def offending_uri(match: re.Match) -> str | None:
+        """The envelope URI the lookup uses, or None when it is not the 1.1 envelope."""
+        try:
+            uri = match.group("uri")
+        except IndexError:
+            variable = match.group("var")
+            if variable not in envelope_names:
+                return None
+            return SOAP_11_ENVELOPE_URIS[0]
+        return uri if uri.rstrip("/").lower() in {
+            known.rstrip("/").lower() for known in SOAP_11_ENVELOPE_URIS
+        } else None
+
+    for line_number, line in enumerate(lines, start=1):
+        if ignored(line):
+            continue
+        for pattern in (_NAMESPACE_LITERAL, _NAMESPACE_VARIABLE):
+            for match in pattern.finditer(line):
+                child = match.group("child").lower()
+                if child not in UNQUALIFIED_FAULT_CHILDREN:
+                    continue
+                if offending_uri(match) is None:
+                    continue
+                findings.append(
+                    Finding(
+                        line_number,
+                        "soap-namespace",
+                        f"'{child}' is UNQUALIFIED in SOAP 1.1 and has no namespace; "
+                        f"'{match.group(0)}' always resolves to None. Use "
+                        f"fault.find('{child}') instead",
+                    )
+                )
 
     return findings
 

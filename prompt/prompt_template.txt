@@ -77,6 +77,23 @@ Your task: Analyze the SAP integration flow and generate a comprehensive unit te
   - Uses fixtures for test data setup
   - Includes assertions that validate both response structure and business logic outcomes
   - Handles timeouts, connection errors, and partial failures gracefully
+  - **Reads a SOAP Fault correctly.** In SOAP 1.1 only `Fault` is in the envelope
+    namespace; `faultcode`, `faultstring` and `faultactor` are **UNQUALIFIED** and
+    do not inherit it. A lookup that applies the envelope namespace returns `None`
+    and the assertion fails on a mock that is perfectly correct. Write:
+
+    ```python
+    ENV = "{http://schemas.xmlsoap.org/soap/envelope/}"
+    fault = root.find(f".//{ENV}Fault")          # Fault IS qualified
+    assert fault is not None
+    detail = fault.find("faultstring")           # children are NOT
+    assert detail is not None and "Escalation" in detail.text
+    ```
+
+    `fault.find(f"{ENV}faultstring")` is wrong and must not be written. The same
+    applies to `detail`, which is also unqualified. When the response is a plain
+    payload rather than a Fault, navigate by the namespace the payload itself
+    declares - never assume a prefix or a URI that the artifact does not declare.
 
 - **Risk Analysis:** Identify risks specific to this integration (data loss, transformation errors, connection failures, timeout scenarios, etc.). For each risk, describe the business consequence and the mitigation strategy your tests cover.
 
