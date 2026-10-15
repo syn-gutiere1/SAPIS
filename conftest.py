@@ -85,3 +85,54 @@ def tmp_path_factory() -> Path:
     environments.
     """
     return _new_directory("s")
+
+
+# ---------------------------------------------------------------------------
+# Failure marker
+# ---------------------------------------------------------------------------
+
+_session_failures = 0
+
+
+def pytest_runtest_logreport(report) -> None:
+    """Count every failure, wherever it happens (setup, call or teardown)."""
+    global _session_failures
+    if report.failed:
+        _session_failures += 1
+
+
+def pytest_sessionfinish(session, exitstatus) -> None:
+    """
+    Record the verdict in a file, so the CI job does not have to infer it.
+
+    `PYTEST_FAILURE_MARKER` carries the path to write when the suite failed. When the
+    variable is absent - a local run - nothing is written.
+
+    The suite reports its own verdict here instead of letting the shell derive it from
+    the exit status of a pipeline. Deriving it in the shell failed in CI once already:
+    the Groovy harness reported `3 passed, 1 failed` and exited 1, while the shell read
+    the status as 0. A component that knows its own verdict should say so directly.
+
+    `exitstatus` is non-zero for failures, for a collection error, and for an internal
+    error, so testing it covers cases where no individual report is marked failed.
+    """
+    import os
+    from pathlib import Path
+
+    path = os.environ.get("PYTEST_FAILURE_MARKER")
+    if not path:
+        return
+
+    if not _session_failures and exitstatus == 0:
+        return
+
+    reason = f"{_session_failures} test(s) failed, exit status {exitstatus}"
+    try:
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(reason + "\n", encoding="utf-8")
+        print(f"Failure marker written: {target} ({reason})")
+    except OSError as exc:  # pragma: no cover - I/O failure in CI
+        # Never mask the real verdict because the marker could not be written: the
+        # pytest exit status still reports it.
+        print(f"Could not write the failure marker {path}: {exc}")

@@ -407,7 +407,7 @@ def test_filter_selects_a_single_fixture(scenario):
 def _multi_script_workspace(tmp_path: Path) -> tuple[Path, Path]:
     """Two scripts, each with its own fixture folder."""
     scripts = tmp_path / "script"
-    scripts.mkdir()
+    scripts.mkdir(parents=True)
 
     (scripts / "Condition.groovy").write_text(WORKING_SCRIPT, encoding="utf-8")
     (scripts / "Headers.groovy").write_text(SCRIPT_WITH_LOGGING, encoding="utf-8")
@@ -471,7 +471,7 @@ def test_scan_all_produces_one_suite_per_script(tmp_path: Path):
 
 def test_scan_all_on_an_empty_folder_does_not_fail(tmp_path: Path):
     scripts = tmp_path / "script"
-    scripts.mkdir()
+    scripts.mkdir(parents=True)
     testdata = tmp_path / "testdata"
     testdata.mkdir()
 
@@ -517,7 +517,7 @@ def test_snapshot_without_review_fails(tmp_path: Path):
     guard, a real defect would be frozen as an expectation.
     """
     scripts = tmp_path / "script"
-    scripts.mkdir()
+    scripts.mkdir(parents=True)
     (scripts / "Condition.groovy").write_text(WORKING_SCRIPT, encoding="utf-8")
 
     testdata = tmp_path / "testdata" / "Condition"
@@ -536,7 +536,7 @@ def test_snapshot_without_review_fails(tmp_path: Path):
 
 def test_snapshot_after_review_passes(tmp_path: Path):
     scripts = tmp_path / "script"
-    scripts.mkdir()
+    scripts.mkdir(parents=True)
     (scripts / "Condition.groovy").write_text(WORKING_SCRIPT, encoding="utf-8")
 
     testdata = tmp_path / "testdata" / "Condition"
@@ -630,7 +630,7 @@ def test_gsh_scripts_are_scanned(tmp_path: Path):
     scanned, so a production script using it had no coverage at all.
     """
     scripts = tmp_path / "script"
-    scripts.mkdir()
+    scripts.mkdir(parents=True)
     (scripts / "One.groovy").write_text(_plain_script(), encoding="utf-8")
     (scripts / "Two.gsh").write_text(_plain_script(), encoding="utf-8")
     (scripts / "notes.txt").write_text("not a script", encoding="utf-8")
@@ -655,7 +655,7 @@ def test_fixture_folder_for_an_awkward_name_is_reported(tmp_path: Path):
     name to create, because it is not guessable.
     """
     scripts = tmp_path / "script"
-    scripts.mkdir()
+    scripts.mkdir(parents=True)
     (scripts / "My Script (1).gsh").write_text(_plain_script(), encoding="utf-8")
 
     # `--testdata` must exist (the harness validates it), but it holds no fixture for
@@ -668,3 +668,157 @@ def test_fixture_folder_for_an_awkward_name_is_reported(tmp_path: Path):
 
     assert "My_Script__1_" in result.stdout
     assert "expected a folder named" in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# The harness writes its own failure marker
+# ---------------------------------------------------------------------------
+
+
+def _run_with_marker(scripts: Path, testdata: Path, marker: Path):
+    """Run the harness with HARNESS_FAILURE_MARKER set, as the workflow does."""
+    import os
+
+    env = dict(os.environ)
+    env["HARNESS_FAILURE_MARKER"] = str(marker)
+    return subprocess.run(
+        [
+            "cmd", "/c", "groovy", "-cp", str(REPO / "stubs"),
+            str(REPO / "groovy-harness" / "TestHarness.groovy"),
+            "--scan-all", str(scripts),
+            "--testdata", str(testdata),
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        cwd=REPO,
+        env=env,
+    )
+
+
+def _case(tmp_path: Path, *, should_pass: bool):
+    """A one-script, one-case fixture that either passes or fails."""
+    scripts = tmp_path / "script"
+    scripts.mkdir(parents=True)
+    (scripts / "Rule.groovy").write_text(
+        "import com.sap.gateway.ip.core.customdev.util.Message\n"
+        "def Message processData(Message message) {\n"
+        "    message.setHeader('Seen', 'yes')\n"
+        "    return message\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    testdata = tmp_path / "testdata" / "Rule"
+    testdata.mkdir(parents=True)
+    (testdata / "case.xml").write_text("<x/>", encoding="utf-8")
+    expected = "yes" if should_pass else "no"
+    (testdata / "case.assert.json").write_text(
+        '{"headers": {"Seen": "%s"}}' % expected, encoding="utf-8"
+    )
+    return scripts, tmp_path / "testdata"
+
+
+def test_harness_writes_the_marker_only_on_failure(tmp_path: Path):
+    """
+    The harness records its own verdict, because deriving it in the shell failed: CI
+    reported `3 passed, 1 failed` and exit 1 while `${PIPESTATUS[0]}` read 0, so no
+    marker was written and a red harness was treated as a pass.
+    """
+    marker = tmp_path / "groovy-failed"
+
+    scripts, testdata = _case(tmp_path / "failing", should_pass=False)
+    failing = _run_with_marker(scripts, testdata, marker)
+
+    assert "1 failed" in failing.stdout
+    assert marker.is_file(), "a failing harness must write the marker"
+    assert "1 of 1 case(s) failed" in marker.read_text(encoding="utf-8")
+
+    marker.unlink()
+    scripts, testdata = _case(tmp_path / "passing", should_pass=True)
+    passing = _run_with_marker(scripts, testdata, marker)
+
+    assert "0 failed" in passing.stdout
+    assert not marker.is_file(), "a green harness must not write the marker"
+
+
+def test_harness_without_the_variable_writes_nothing(tmp_path: Path):
+    """A local run has no marker path, and must not try to write one."""
+    scripts, testdata = _case(tmp_path, should_pass=False)
+
+    import os
+
+    env = dict(os.environ)
+    env.pop("HARNESS_FAILURE_MARKER", None)
+    result = subprocess.run(
+        [
+            "cmd", "/c", "groovy", "-cp", str(REPO / "stubs"),
+            str(REPO / "groovy-harness" / "TestHarness.groovy"),
+            "--scan-all", str(scripts),
+            "--testdata", str(testdata),
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        cwd=REPO,
+        env=env,
+    )
+
+    assert "1 failed" in result.stdout
+    assert "Failure marker written" not in result.stdout
+
+
+def test_pytest_writes_its_marker_from_conftest(tmp_path: Path):
+    """
+    The generated suite records its own verdict through `pytest_sessionfinish`, so the
+    job does not have to read the exit status of a pipeline. Deriving it in the shell
+    failed once already: the Groovy harness reported a failure and exited 1 while the
+    shell read the status as 0.
+    """
+    import os
+
+    failing = tmp_path / "probe"
+    failing.mkdir()
+    (failing / "test_probe.py").write_text(
+        "def test_fails():\n    assert False, 'probe'\n", encoding="utf-8"
+    )
+
+    marker = tmp_path / "pytest-failed"
+    env = dict(os.environ)
+    env["PYTEST_FAILURE_MARKER"] = str(marker)
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-q", str(failing)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        cwd=REPO,
+        env=env,
+    )
+
+    assert result.returncode != 0
+    assert marker.is_file(), f"a failing suite must write the marker:\n{result.stdout}"
+    assert "failed" in marker.read_text(encoding="utf-8")
+
+    # And a green run must not write it.
+    marker.unlink()
+    passing = tmp_path / "passing"
+    passing.mkdir()
+    (passing / "test_probe.py").write_text(
+        "def test_passes():\n    assert True\n", encoding="utf-8"
+    )
+    subprocess.run(
+        [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-q", str(passing)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        cwd=REPO,
+        env=env,
+    )
+
+    assert not marker.is_file(), "a green suite must not write the marker"
