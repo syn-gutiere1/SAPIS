@@ -14,7 +14,8 @@ case, a runner on the internet would make a real request to an internal host.
 
 Checks:
 
-  1. network call whose target is NOT covered by a mock (the case above);
+  1. network call whose OWN test has no mock. Scoped per block: a mock in another test
+     does not cover it, which is how a real call used to pass;
   2. internal or invented host that is neither a namespace URI nor a test host;
   3. fixed port in a local mock server (collides between suites in parallel).
 
@@ -145,6 +146,83 @@ def suspicious_host(host: str) -> str | None:
     return None
 
 
+# ---------------------------------------------------------------------------
+# Scoping the mocks
+# ---------------------------------------------------------------------------
+
+# A top-level definition: `def name(` or `class Name` with no indentation.
+_TOP_LEVEL_DEF = re.compile(r"^(?:async\s+)?(?:def|class)\s+\w+")
+
+
+def _has_mock(body: str) -> bool:
+    """True when this text declares mock coverage of some kind."""
+    return any(pattern.search(body) for _name, pattern in MOCKS)
+
+
+def _split_blocks(lines: list[str]) -> dict[str, list]:
+    """
+    Group the file into the header, each top-level definition, and their line ranges.
+
+    Returns `{"header": [(text, start_line)], "functions": [(body, start_line), ...],
+    "helpers": [(body, start_line), ...]}`. A "helper" is a function that makes no network
+    call of its own: it is the case where a test delegates to a module-level function, and
+    flagging that would be a false positive.
+    """
+    boundaries: list[tuple[int, str]] = []
+    for index, line in enumerate(lines):
+        if _TOP_LEVEL_DEF.match(line):
+            boundaries.append((index, line.strip()))
+
+    header_lines = lines[: boundaries[0][0]] if boundaries else lines
+    blocks: dict[str, list] = {
+        "header": [("\n".join(header_lines), 1)],
+        "functions": [],
+        "helpers": [],
+    }
+
+    for position, (start, signature) in enumerate(boundaries):
+        end = boundaries[position + 1][0] if position + 1 < len(boundaries) else len(lines)
+        body = "\n".join(lines[start:end])
+        entry = (body, start + 1)
+        # A nested function definition is part of its parent, not a block of its own.
+        if len(signature) != len(signature.lstrip()):
+            continue
+        if any(pattern.search(body) for _name, pattern in NETWORK_TARGETS):
+            blocks["functions"].append(entry)
+        else:
+            blocks["helpers"].append(entry)
+
+    return blocks
+
+
+def _covered(line_number: int, blocks: dict, helper_has_mock: bool) -> bool:
+    """
+    True when the network call on this line sits in a block that has its own mock.
+
+    A block that makes no call of its own but delegates to a helper is exempt when the
+    helper has a mock: the call is then made on the helper's behalf, inside its mocked body.
+    """
+    for body, start in blocks["functions"]:
+        if start <= line_number < start + len(body.splitlines()):
+            if _has_mock(body):
+                return True
+            # The call may be delegated: the block imports or calls a helper by name.
+            for helper_body, _helper_start in blocks["helpers"]:
+                name = _defined_name(helper_body)
+                if name and re.search(rf"\b{re.escape(name)}\s*\(", body):
+                    return helper_has_mock
+            return False
+
+    # Module level: the header has to carry the mock itself.
+    header_body = blocks["header"][0][0] if blocks["header"] else ""
+    return _has_mock(header_body)
+
+
+def _defined_name(body: str) -> str | None:
+    match = re.match(r"^(?:async\s+)?(?:def|class)\s+(\w+)", body.lstrip())
+    return match.group(1) if match else None
+
+
 def check(path: Path, allowed: set[str] | None = None) -> list[Finding]:
     text = path.read_text(encoding="utf-8", errors="replace")
     lines = text.splitlines()
@@ -155,24 +233,28 @@ def check(path: Path, allowed: set[str] | None = None) -> list[Finding]:
         return line.lstrip().startswith("#")
 
     # --- network call ------------------------------------------------------
-    # The whole file is inspected: if there is any call with no mock declared
-    # at all, the test can touch the network.
-    has_mock = any(pattern.search(text) for _name, pattern in MOCKS)
+    # Mock coverage is scoped to the block that makes the call. Checking it over the whole
+    # file approved anything as soon as ONE mock existed somewhere: a test that posted for
+    # real was cleared by an unrelated test's `@responses.activate`. Measured, not assumed
+    # - see the probes in the test suite.
+    blocks = _split_blocks(lines)
+    helper_has_mock = any(_has_mock(body) for body, _start in blocks["helpers"])
 
     for line_number, line in enumerate(lines, start=1):
         if ignored(line):
             continue
         for name, pattern in NETWORK_TARGETS:
-            if pattern.search(line):
-                if not has_mock:
-                    findings.append(
-                        Finding(
-                            line_number,
-                            "network",
-                            f"'{name}' with no mock in the file",
-                        )
+            if not pattern.search(line):
+                continue
+            if not _covered(line_number, blocks, helper_has_mock):
+                findings.append(
+                    Finding(
+                        line_number,
+                        "network",
+                        f"'{name}' has no mock in the test that calls it",
                     )
-                break
+                )
+            break
 
     # --- hosts -------------------------------------------------------------
     for line_number, line in enumerate(lines, start=1):
