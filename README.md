@@ -40,7 +40,7 @@ access to credentials before that review.
 |-- groovy-harness/
 |   `-- TestHarness.groovy          # runs the REAL .groovy scripts
 |-- stubs/                          # SAP CPI classes (Message, MessageLog, ...)
-|-- tests/                          # the pipeline's own pytest suite (208 tests)
+|-- tests/                          # the pipeline's own pytest suite (222 tests)
 |-- legacy/                         # original pipeline, historical reference
 |-- docs/, templates/               # empty directories, not tracked by Git
 `-- .github/workflows/
@@ -185,7 +185,7 @@ pytest
 puts `src/` on `sys.path` before any import, so `pytest` from the repository root works
 without further setup.
 
-**Current count: 208 tests**, all passing. Verified with `python -m pytest -q` in this
+**Current count: 222 tests**, all passing. Verified with `python -m pytest -q` in this
 checkout, with Groovy on `PATH`.
 
 `conftest.py` replaces the `tmp_path` and `tmp_path_factory` fixtures. The native
@@ -393,6 +393,60 @@ invalid usage:
 Documentation hosts, loopback addresses and namespace URIs are not findings. A legitimate
 host can be allowed with `--allow`; `--quiet` suppresses the trailing explanation.
 The workflow runs the checker without either flag, so any finding fails the job.
+
+---
+
+## Deriving the trigger endpoint from the artifact
+
+A UAT smoke test needs a URL to call. Asking a human to type a full URL for every
+iFlow does not scale and drifts from the artifact as soon as the flow is edited, so
+the per-iFlow part is derived from the `.iflw` itself:
+
+```bash
+python scripts/derive_endpoint.py CI-CD/iflows/SI_Glovia_SalesOrderCreate
+```
+
+```json
+{
+  "iflow": "SI_Glovia_SalesOrderCreate",
+  "has_http_trigger": true,
+  "component_type": "SOAP",
+  "transport_protocol": "HTTP",
+  "path": "/Glovia_SalesOrder",
+  "listener_path": "/Glovia_SalesOrder",
+  "sender_auth_type": "RoleBased",
+  "required_role": "ESBMessaging.send"
+}
+```
+
+### What comes from the artifact, and what cannot
+
+| Value | Source |
+|---|---|
+| listener path (`/Glovia_SalesOrder`) | `address` (or `urlPath` for REST) in the sender adapter properties |
+| component type (`SOAP`, `REST`, ...) | `ComponentType` |
+| transport protocol | `TransportProtocol` |
+| authentication mode | `senderAuthType`, `userRole` |
+| **tenant host** | **not derivable — configured once, shared by every iFlow** |
+
+The artifact records a **relative** listener path, never the runtime hostname: the
+same `.iflw` is deployable to any tenant. So the host stays a single configured
+value, and the workflow composes `host + listener_path`. That is why one setting
+covers every iFlow instead of one per iFlow.
+
+### Polled adapters have no webhook
+
+A sender of type SFTP, JMS, Mail, Timer or IDoc is polled or scheduled by the tenant.
+There is nothing to call. The script reports this instead of inventing a URL:
+
+```bash
+$ python scripts/derive_endpoint.py CI-CD/iflows/SomeSftpFlow
+[WARNING] SomeSftpFlow declares no HTTP trigger (component type: SFTP).
+The tenant polls or schedules this flow, so there is no webhook to call.
+```
+
+With `--fail-if-no-trigger` the exit code becomes 1, which is what a CI job uses to
+decide between "run the smoke test" and "skip it with an honest message".
 
 ---
 
