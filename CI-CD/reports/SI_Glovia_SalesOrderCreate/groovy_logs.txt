@@ -1,0 +1,43 @@
+[FAIL] GLOVIA_Conditioncheck_Salesorder_Create :: malformed_payload (53 ms)
+         -> MultipleCompilationErrorsException: startup failed:
+/home/runner/work/SAPIS/SAPIS/CI-CD/iflows/SI_Glovia_SalesOrderCreate/src/main/resources/script/GLOVIA_Conditioncheck_Salesorder_Create.groovy: 5: unable to resolve class XmlSlurper
+ @ line 5, column 15.
+       def xml = new XmlSlurper().parseText(body)
+                 ^
+
+1 error
+
+[FAIL] GLOVIA_Conditioncheck_Salesorder_Create :: sales_order_valid (14 ms)
+         -> MultipleCompilationErrorsException: startup failed:
+/home/runner/work/SAPIS/SAPIS/CI-CD/iflows/SI_Glovia_SalesOrderCreate/src/main/resources/script/GLOVIA_Conditioncheck_Salesorder_Create.groovy: 5: unable to resolve class XmlSlurper
+ @ line 5, column 15.
+       def xml = new XmlSlurper().parseText(body)
+                 ^
+
+1 error
+
+[FAIL] GLOVIA_Conditioncheck_Salesorder_Create :: so_return_valid (16 ms)
+         -> MultipleCompilationErrorsException: startup failed:
+/home/runner/work/SAPIS/SAPIS/CI-CD/iflows/SI_Glovia_SalesOrderCreate/src/main/resources/script/GLOVIA_Conditioncheck_Salesorder_Create.groovy: 5: unable to resolve class XmlSlurper
+ @ line 5, column 15.
+       def xml = new XmlSlurper().parseText(body)
+                 ^
+
+1 error
+
+[FAIL] GLOVIA_Conditioncheck_Salesorder_Create :: unmatched_order_escalation (17 ms)
+         -> MultipleCompilationErrorsException: startup failed:
+/home/runner/work/SAPIS/SAPIS/CI-CD/iflows/SI_Glovia_SalesOrderCreate/src/main/resources/script/GLOVIA_Conditioncheck_Salesorder_Create.groovy: 5: unable to resolve class XmlSlurper
+ @ line 5, column 15.
+       def xml = new XmlSlurper().parseText(body)
+                 ^
+
+1 error
+
+[PASS] Interface_Generic_Headers :: malformed_payload (57 ms)
+[PASS] Interface_Generic_Headers :: sales_order_valid (15 ms)
+[PASS] Interface_Generic_Headers :: so_return_valid (13 ms)
+[PASS] Interface_Generic_Headers :: unmatched_order_escalation (14 ms)
+
+Summary: 4 passed, 4 failed, 8 total
+JUnit XML: CI-CD/reports/SI_Glovia_SalesOrderCreate/junit-groovy.xml

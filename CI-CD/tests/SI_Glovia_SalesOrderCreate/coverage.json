@@ -1,23 +1,22 @@
 {
   "target_coverage_percent": 100,
   "coverage_by_component": {
-    "SOAP Sender Adapter (MessageFlow_114)": "100%",
-    "Set Message headers Enricher (CallActivity_4)": "100%",
-    "Multicast Gateway (ParallelGateway_74)": "100%",
-    "Exclusive Router Gateway (ExclusiveGateway_80)": "100%",
-    "SalesOrder Branch Mapping (CallActivity_102)": "100%",
-    "Generic Headers Script (CallActivity_13 & CallActivity_71)": "100%",
-    "Default Escalation End Event (EndEvent_11)": "100%",
-    "Exception Subprocess & Payload Logger (SubProcess_91, CallActivity_97, CallActivity_100, EndEvent_95)": "100%",
-    "Orphaned Flow Steps (CallActivity_86, CallActivity_77)": "0%"
+    "StartEvent_2 (SOAP Inbound)": "100%",
+    "CallActivity_4 (Set Message headers & InputPayload property)": "100%",
+    "ParallelGateway_74 (Multicast)": "100%",
+    "ExclusiveGateway_80 (Router - SalesOrder, Return, Default)": "100%",
+    "CallActivity_102 (Message Mapping Test_Mapping)": "100%",
+    "CallActivity_13 & CallActivity_71 (Interface_Generic_Headers)": "100%",
+    "EndEvent_2 & EndEvent_9 (Message End Events)": "100%",
+    "EndEvent_11 (Escalation End Event)": "100%",
+    "SubProcess_91 (CallActivity_97, CallActivity_100, EndEvent_95)": "100%",
+    "CallActivity_86 & CallActivity_77 (Orphaned in BPMN)": "0%"
   },
   "uncovered_paths": [
-    "CallActivity_86 (Content Modifier for OrganizationId extraction) has no incoming or outgoing sequence flows in the BPMN model.",
-    "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) has no sequence flows connected in the BPMN model and is unreachable during runtime."
+    "CallActivity_86 (Content Modifier for OrganizationId) and CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) have no inbound or outbound SequenceFlow connectors in the BPMN model definitions."
   ],
   "coverage_recommendations": [
-    "Reconnect CallActivity_86 and CallActivity_77 into the main execution line between CallActivity_4 and ExclusiveGateway_80 so that OrderCodeValid header is set prior to routing.",
-    "Update router conditions to evaluate ${header.OrderCodeValid} = 'true' instead of unlinked externalized strings.",
-    "Once connected, re-run test suite to attain complete 100% executable coverage over all BPMN components."
+    "Wire CallActivity_86 and CallActivity_77 into the main sequence between CallActivity_4 and ExclusiveGateway_80 so that OrderCodeValid and OrganizationId are evaluated before routing.",
+    "Once connected in BPMN, extend test scenarios to assert 'OrderCodeValid == false' specifically routing to Escalation End."
   ]
 }

@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="groovy-harness" tests="8" failures="4" errors="0" time="0.199">
+  <testsuite name="GLOVIA_Conditioncheck_Salesorder_Create.groovy" tests="4" failures="4" errors="0" time="0">
+    <testcase classname="GLOVIA_Conditioncheck_Salesorder_Create.groovy" name="GLOVIA_Conditioncheck_Salesorder_Create :: malformed_payload" time="0.053"><failure message="MultipleCompilationErrorsException: startup failed:
+/home/runner/work/SAPIS/SAPIS/CI-CD/iflows/SI_Glovia_SalesOrderCreate/src/main/resources/script/GLOVIA_Conditioncheck_Salesorder_Create.groovy: 5: unable to resolve class XmlSlurper
+ @ line 5, column 15.
+       def xml = new XmlSlurper().parseText(body)
+                 ^
+
+1 error
+">MultipleCompilationErrorsException: startup failed:
+/home/runner/work/SAPIS/SAPIS/CI-CD/iflows/SI_Glovia_SalesOrderCreate/src/main/resources/script/GLOVIA_Conditioncheck_Salesorder_Create.groovy: 5: unable to resolve class XmlSlurper
+ @ line 5, column 15.
+       def xml = new XmlSlurper().parseText(body)
+                 ^
+
+1 error
+</failure></testcase>
+    <testcase classname="GLOVIA_Conditioncheck_Salesorder_Create.groovy" name="GLOVIA_Conditioncheck_Salesorder_Create :: sales_order_valid" time="0.014"><failure message="MultipleCompilationErrorsException: startup failed:
+/home/runner/work/SAPIS/SAPIS/CI-CD/iflows/SI_Glovia_SalesOrderCreate/src/main/resources/script/GLOVIA_Conditioncheck_Salesorder_Create.groovy: 5: unable to resolve class XmlSlurper
+ @ line 5, column 15.
+       def xml = new XmlSlurper().parseText(body)
+                 ^
+
+1 error
+">MultipleCompilationErrorsException: startup failed:
+/home/runner/work/SAPIS/SAPIS/CI-CD/iflows/SI_Glovia_SalesOrderCreate/src/main/resources/script/GLOVIA_Conditioncheck_Salesorder_Create.groovy: 5: unable to resolve class XmlSlurper
+ @ line 5, column 15.
+       def xml = new XmlSlurper().parseText(body)
+                 ^
+
+1 error
+</failure></testcase>
+    <testcase classname="GLOVIA_Conditioncheck_Salesorder_Create.groovy" name="GLOVIA_Conditioncheck_Salesorder_Create :: so_return_valid" time="0.016"><failure message="MultipleCompilationErrorsException: startup failed:
+/home/runner/work/SAPIS/SAPIS/CI-CD/iflows/SI_Glovia_SalesOrderCreate/src/main/resources/script/GLOVIA_Conditioncheck_Salesorder_Create.groovy: 5: unable to resolve class XmlSlurper
+ @ line 5, column 15.
+       def xml = new XmlSlurper().parseText(body)
+                 ^
+
+1 error
+">MultipleCompilationErrorsException: startup failed:
+/home/runner/work/SAPIS/SAPIS/CI-CD/iflows/SI_Glovia_SalesOrderCreate/src/main/resources/script/GLOVIA_Conditioncheck_Salesorder_Create.groovy: 5: unable to resolve class XmlSlurper
+ @ line 5, column 15.
+       def xml = new XmlSlurper().parseText(body)
+                 ^
+
+1 error
+</failure></testcase>
+    <testcase classname="GLOVIA_Conditioncheck_Salesorder_Create.groovy" name="GLOVIA_Conditioncheck_Salesorder_Create :: unmatched_order_escalation" time="0.017"><failure message="MultipleCompilationErrorsException: startup failed:
+/home/runner/work/SAPIS/SAPIS/CI-CD/iflows/SI_Glovia_SalesOrderCreate/src/main/resources/script/GLOVIA_Conditioncheck_Salesorder_Create.groovy: 5: unable to resolve class XmlSlurper
+ @ line 5, column 15.
+       def xml = new XmlSlurper().parseText(body)
+                 ^
+
+1 error
+">MultipleCompilationErrorsException: startup failed:
+/home/runner/work/SAPIS/SAPIS/CI-CD/iflows/SI_Glovia_SalesOrderCreate/src/main/resources/script/GLOVIA_Conditioncheck_Salesorder_Create.groovy: 5: unable to resolve class XmlSlurper
+ @ line 5, column 15.
+       def xml = new XmlSlurper().parseText(body)
+                 ^
+
+1 error
+</failure></testcase>
+  </testsuite>
+  <testsuite name="Interface_Generic_Headers.groovy" tests="4" failures="0" errors="0" time="0">
+    <testcase classname="Interface_Generic_Headers.groovy" name="Interface_Generic_Headers :: malformed_payload" time="0.057"></testcase>
+    <testcase classname="Interface_Generic_Headers.groovy" name="Interface_Generic_Headers :: sales_order_valid" time="0.015"></testcase>
+    <testcase classname="Interface_Generic_Headers.groovy" name="Interface_Generic_Headers :: so_return_valid" time="0.013"></testcase>
+    <testcase classname="Interface_Generic_Headers.groovy" name="Interface_Generic_Headers :: unmatched_order_escalation" time="0.014"></testcase>
+  </testsuite>
+</testsuites>

@@ -2,7 +2,7 @@
   "iflow": "SI_Glovia_SalesOrderCreate",
   "source": "CI-CD/iflows/SI_Glovia_SalesOrderCreate",
   "source_relative": "src/main/resources/scenarioflows/integrationflow/SI_Glovia_SalesOrderCreate.iflw",
-  "iflow_sha256": "dc0205587c5bd9c4715c2cfa9c710a49305dc5e21d3f58ccdfcae3a2b0ccefb7",
+  "iflow_sha256": "328849f568332853cbe14c5c21bcdd2cf7ef49f33fb82a97474dff47e2274af6",
   "scripts_sha256": {
     "script/GLOVIA_Conditioncheck_Salesorder_Create.groovy": "ac97a6829314a73c8d8203074bb7ca8ecc2b85ba12e0085e9f0a7bef39e1a28b",
     "script/Interface_Generic_Headers.groovy": "668d03bddd37e6c742215eceef1bcf09a69fbf128a45e4ee2cf17f66e0244181",
@@ -19,9 +19,9 @@
     "testdata_files": 4,
     "files": [
       "cases.json",
-      "testdata/sales_order_create_payload.xml",
-      "testdata/sales_order_return_payload.xml",
-      "testdata/unmatched_order_payload.xml",
+      "testdata/sales_order_valid.xml",
+      "testdata/so_return_valid.xml",
+      "testdata/unmatched_order_escalation.xml",
       "testdata/malformed_payload.xml",
       "test_flow.py",
       "risks.json",
@@ -35,21 +35,21 @@
     "base_url": "https://portkey.syngenta.com/v1",
     "temperature": 0.2,
     "language_code": "en_US",
-    "prompt_tokens": 15087,
-    "completion_tokens": 8444,
-    "total_tokens": 23531
+    "prompt_tokens": 15089,
+    "completion_tokens": 6465,
+    "total_tokens": 21554
   },
   "prompt": {
     "file": "prompt/prompt_template.txt",
-    "sha256": "ce4e7caea2fdadc680d553b8326723221af704322801658413a1742398e7364a"
+    "sha256": "43507b775e3915af3684d68ec11c469845b6d41f51d4113c0a3d4d14038d2910"
   },
   "truncated": [],
   "attempts": 1,
-  "duration_seconds": 46.141,
-  "generated_at": "2026-10-15T03:48:17Z",
+  "duration_seconds": 35.837,
+  "generated_at": "2026-10-15T03:53:31Z",
   "environment": {
-    "github_run_id": "38678053921",
-    "github_sha": "3452aa2c3edb1757998e8e1960a305fbd5a9ce2f",
+    "github_run_id": "38678518892",
+    "github_sha": "0c8ca90ef5847de402be4b17b7dd8016089c5a0f",
     "github_ref": "refs/heads/sap-is",
     "github_repository": "syn-gutiere1/SAPIS"
   }

@@ -1,22 +1,22 @@
 [
   {
-    "risk": "Orphaned BPMN activities (CallActivity_86 Content Modifier and CallActivity_77 Groovy Script)",
-    "consequence": "The validation script 'GLOVIA_Conditioncheck_Salesorder_Create.groovy' and XPath extraction of OrganizationId are disconnected from the execution path. Invalid order codes will not be flagged, resulting in bad data reaching downstream receivers.",
-    "mitigation": "Unit tests assert order code validation outcomes; integration suite flags orphaned nodes as quality defects before deployment."
+    "risk": "Unresolved externalized parameters {{Glovia_Route_SalesOrder}} and {{Glovia_Route2_ReturnSalesOrder}} in Gateway conditions",
+    "consequence": "Router evaluation will fail at runtime or fall through unconditionally to the default escalation branch, failing legitimate order entries.",
+    "mitigation": "Unit tests assert explicit routing outcomes against each branch condition, and CI validates parameter externalization tables."
   },
   {
-    "risk": "Unmatched routing default condition escalates via Escalation End (EndEvent_11)",
-    "consequence": "Because the SOAP inbound adapter is configured as OneWay with 'returnExceptionToSender=false', messages with unrecognized order types terminate abruptly without informing the sender system, causing silent order loss.",
-    "mitigation": "Automated scenario TC_GLOVIA_ESC_03 monitors escalation event trigger and requires alert logging or DLQ persistence."
+    "risk": "Message mapping failure on CallActivity_102 due to schema mismatch",
+    "consequence": "Processing halts unexpectedly mid-flight, potentially dropping sales orders without client notification.",
+    "mitigation": "SubProcess_91 is validated to capture mapping exceptions, restore '${property.InputPayload}', log the payload attachment, and trigger EndEvent_95."
   },
   {
-    "risk": "Property 'InputPayload' stores complete message body (${in.body}) in memory",
-    "consequence": "High-volume or large attachment payloads stored in exchange properties lead to Java Virtual Machine (JVM) heap memory pressure and potential OutOfMemoryError in worker nodes.",
-    "mitigation": "Impose body size constraint (enforced at 40MB by SOAP adapter settings) and mock large-message threshold tests."
+    "risk": "ParallelGateway_74 configured with a single branch without a join gateway",
+    "consequence": "Can cause thread leakage or inconsistent camel exchange completion if future branches are added without aggregation synchronization.",
+    "mitigation": "Assert synchronous exchange completion across single branch execution and check thread boundary timeouts."
   },
   {
-    "risk": "Runtime failure of externalized routing parameters ({{Glovia_Route_SalesOrder}} and {{Glovia_Route2_ReturnSalesOrder}})",
-    "consequence": "Misconfigured or missing tenant parameters will result in XML condition evaluation syntax errors, dropping all messages into the escalation subprocess.",
-    "mitigation": "Suite validates parameter injection into gateway conditions across deployment configuration profiles."
+    "risk": "Dead/orphaned components CallActivity_86 and CallActivity_77 in BPMN model",
+    "consequence": "XPath extraction of OrganizationId and Groovy check GLOVIA_Conditioncheck_Salesorder_Create are disconnected, preventing business validation.",
+    "mitigation": "Coverage metrics flag disconnected components; tests ensure routing relies strictly on valid XML conditions while warning on unused scripts."
   }
 ]

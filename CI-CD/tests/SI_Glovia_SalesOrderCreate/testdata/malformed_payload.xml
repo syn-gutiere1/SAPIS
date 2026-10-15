@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
-  <soapenv:Body>
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
     <ns1:notifications xmlns:ns1="http://soap.sforce.com/2005/09/outbound">
       <ns1:Notification>
-        <unclosedTag>Corrupted XML content
+        <unclosed_tag>Broken XML Structure
     </ns1:notifications>
-  </soapenv:Body>
-</soapenv:Envelope>
+  </SOAP:Body>
+</SOAP:Envelope>
