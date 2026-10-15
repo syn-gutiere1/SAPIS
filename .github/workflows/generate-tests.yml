@@ -400,9 +400,7 @@ jobs:
       # committed with the rest of the evidence.
       - name: Analyse the failure and suggest fixes
         id: suggestions
-        if: >-
-          always() && (hashFiles(format('{0}/pytest-failed', env.REPORTS_DIR)) != ''
-          || hashFiles(format('{0}/groovy-failed', env.REPORTS_DIR)) != '')
+        if: always()
         continue-on-error: true
         env:
           PORTKEY_AUTH_TOKEN: ${{ secrets.PORTKEY_AUTH_TOKEN }}
@@ -495,7 +493,7 @@ jobs:
       # `continue-on-error` (an LLM failure must not invalidate the test evidence), and
       # with it the outcome does not distinguish a produced file from a failed call.
       - name: Summarize the suggested fixes
-        if: hashFiles(format('{0}/ai_fix_suggestions.md', env.REPORTS_DIR)) != ''
+        if: always()
         continue-on-error: true
         run: |
           {
@@ -509,7 +507,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish the suggested fixes in the PR
-        if: hashFiles(format('{0}/ai_fix_suggestions.md', env.REPORTS_DIR)) != ''
+        if: always()
         continue-on-error: true
         run: |
           # The suggestion only has value where the developer is already looking, so
@@ -546,7 +544,7 @@ jobs:
         # as everywhere else in this job: the steps context did not reflect the real
         # outcome. A missing file means the harness never ran, and the reporter has
         # nothing to publish.
-        if: always() && hashFiles(format('{0}/junit-groovy.xml', env.REPORTS_DIR)) != ''
+        if: always()
         continue-on-error: true
         uses: dorny/test-reporter@v1
         with:
@@ -682,16 +680,30 @@ jobs:
       # artifact, and they read the marker files for the same reason as above: the steps
       # context did not report the suite failures reliably.
       - name: Fail when the generated tests failed
-        if: hashFiles(format('{0}/pytest-failed', env.REPORTS_DIR)) != ''
+        if: always()
         run: |
-          echo "::error::pytest failed for ${{ matrix.iflow }}; see the artifact $ARTIFACT_NAME."
-          exit 1
+          FAILED=0
+          if [ -f "$REPORTS_DIR/pytest-failed" ]; then
+            echo "::error::pytest failed for ${{ matrix.iflow }}; see the artifact $ARTIFACT_NAME."
+            FAILED=1
+          fi
+          # The markers are internal signalling, not evidence. Read here, after the commit
+          # step, so they never reach the repository or the artifact.
+          rm -f "$REPORTS_DIR/pytest-failed"
+          [ "$FAILED" -eq 0 ] && echo "pytest did not fail."
+          exit "$FAILED"
 
       - name: Fail when the real Groovy scripts failed
-        if: hashFiles(format('{0}/groovy-failed', env.REPORTS_DIR)) != ''
+        if: always()
         run: |
-          echo "::error::The Groovy harness failed for ${{ matrix.iflow }}: a real script raised or an assertion did not hold. See $REPORTS_DIR/junit-groovy.xml."
-          exit 1
+          FAILED=0
+          if [ -f "$REPORTS_DIR/groovy-failed" ]; then
+            echo "::error::The Groovy harness failed for ${{ matrix.iflow }}: a real script raised or an assertion did not hold. See $REPORTS_DIR/junit-groovy.xml."
+            FAILED=1
+          fi
+          rm -f "$REPORTS_DIR/groovy-failed"
+          [ "$FAILED" -eq 0 ] && echo "The Groovy harness did not fail."
+          exit "$FAILED"
 
   # -------------------------------------------------------------------------
   # The PR from `sap-is` into `main`, with the generated evidence as the body.
