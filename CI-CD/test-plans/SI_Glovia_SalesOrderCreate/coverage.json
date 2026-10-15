@@ -1,23 +1,26 @@
 {
   "target_coverage_percent": 100,
   "coverage_by_component": {
-    "Inbound_SOAP_Channel": "100%",
-    "CallActivity_4_Enricher_Headers_Properties": "100%",
-    "ParallelGateway_74_Multicast": "100%",
-    "ExclusiveGateway_80_Routing": "100%",
-    "CallActivity_102_Message_Mapping": "100%",
-    "CallActivity_13_Generic_Headers": "100%",
-    "CallActivity_71_Generic_Headers": "100%",
-    "EndEvent_11_Escalation": "100%",
-    "SubProcess_91_Exception_Handling": "100%",
-    "CallActivity_97_CallActivity_100_Logging": "100%",
-    "Unlinked_Steps (CallActivity_77, CallActivity_86)": "0%"
+    "StartEvent_2 (SOAP Inbound)": "100%",
+    "CallActivity_4 (Set Message headers)": "100%",
+    "ParallelGateway_74 (Multicast Branch 1)": "100%",
+    "ExclusiveGateway_80 (Router - SalesOrder, SO Return, Default)": "100%",
+    "CallActivity_102 (Message Mapping 1)": "100%",
+    "CallActivity_13 (Interface_Generic_Headers)": "100%",
+    "CallActivity_71 (Interface_Generic_Headers)": "100%",
+    "EndEvent_2 & EndEvent_9 (Success Message Ends)": "100%",
+    "EndEvent_11 (Escalation End Event)": "100%",
+    "SubProcess_91 (Exception Handling & Log_Payload)": "100%",
+    "CallActivity_77 (Detached Groovy Script)": "0%",
+    "CallActivity_86 (Detached Content Modifier)": "0%"
   },
   "uncovered_paths": [
-    "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) and CallActivity_86 (Content Modifier) are completely disconnected from all BPMN SequenceFlow elements in the process definition, rendering them unreachable in the active runtime graph."
+    "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) has no incoming or outgoing sequence flow connections in the BPMN XML model.",
+    "CallActivity_86 (Content Modifier for OrganizationId) has no incoming or outgoing sequence flow connections in the BPMN XML model."
   ],
   "coverage_recommendations": [
-    "Connect CallActivity_86 and CallActivity_77 between ParallelGateway_74 and ExclusiveGateway_80 if condition validation script is intended to be executed before routing.",
-    "If CallActivity_77 was superseded by gateway XPath conditions, formally remove CallActivity_77 and CallActivity_86 from the BPMN definitions to eliminate technical debt and attain 100% executable model coverage."
+    "Connect CallActivity_77 between CallActivity_4 and ParallelGateway_74 to actively execute OrderTypeCode validation before routing.",
+    "Connect CallActivity_86 between StartEvent_2 and CallActivity_4 or splice it into Branch 1 so OrganizationId is extracted reliably.",
+    "Once connected in the BPMN model, add targeted scenario TC_GLOVIA_006 validating OrderCodeValid header output ('true' vs 'false') to achieve 100% executable flow coverage."
   ]
 }
