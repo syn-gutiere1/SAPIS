@@ -1,0 +1,24 @@
+{
+  "target_coverage_percent": 100,
+  "coverage_by_component": {
+    "Inbound_SOAP_Adapter_MessageFlow_114": "100%",
+    "Set_Message_Headers_CallActivity_4": "100%",
+    "Parallel_Multicast_Gateway_74": "100%",
+    "Router_ExclusiveGateway_80": "100%",
+    "SalesOrder_Branch_CallActivity_102_13": "100%",
+    "SOReturn_Branch_CallActivity_71": "100%",
+    "Default_Escalation_EndEvent_11": "100%",
+    "Exception_SubProcess_91": "100%",
+    "Floating_Activities_CallActivity_77_86": "0%",
+    "CallActivity_77 (Groovy Script 2)": "0%",
+    "CallActivity_86 (Content Modifier)": "0%"
+  },
+  "uncovered_paths": [
+    "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) and CallActivity_86 (Content Modifier) have no incoming or outgoing BPMN sequence flows in the provided XML model.",
+    "Unreachable in the process: CallActivity_77 (Groovy Script 2); CallActivity_86 (Content Modifier). These elements have no sequence flow connecting them to the flow, so no test can exercise them."
+  ],
+  "coverage_recommendations": [
+    "Reconnect CallActivity_77 and CallActivity_86 into the sequence flow between CallActivity_4 and ParallelGateway_74 so header OrderCodeValid is dynamically created before reaching ExclusiveGateway_80.",
+    "Once connected, add parametrized test iterations asserting 'OrderCodeValid == true' for codes 'YORB', 'YICB', 'POR', 'MNZ', 'PLM' and 'OrderCodeValid == false' for arbitrary string inputs."
+  ]
+}

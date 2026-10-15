@@ -1,0 +1,22 @@
+[
+  {
+    "risk": "Unattached Process Activities (CallActivity_86 and CallActivity_77)",
+    "consequence": "CallActivity_86 (Content Modifier extracting OrganizationId) and CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) are disconnected in the BPMN process. If routing expressions rely on header 'OrderCodeValid' or 'OrganizationId', the flow fails or defaults unconditionally to EscalationEnd.",
+    "mitigation": "TC_GLOVIA_003 asserts that undefined routes divert cleanly to EscalationEnd_11. Integration model must be refactored to place CallActivity_77 sequentially after CallActivity_4 before ExclusiveGateway_80."
+  },
+  {
+    "risk": "Input Payload Memory Bloat via Expression Property",
+    "consequence": "CallActivity_4 reads full '${in.body}' into property 'InputPayload'. For inbound SOAP messages nearing the configured maximumBodySize (40MB), storing duplicate payloads in memory will exhaust JVM heap space and cause OutOfMemory errors.",
+    "mitigation": "TC_GLOVIA_004 verifies payload preservation, and sizing bounds should be enforced by asserting on max attachment and body parameters (<maximumBodySize>40</maximumBodySize>)."
+  },
+  {
+    "risk": "Escalation End vs One-Way Message Exchange Pattern",
+    "consequence": "MessageFlow_114 specifies messageExchangePattern 'OneWay'. When EndEvent_11 raises an escalation event with returnExceptionToSender=false, the sender might receive HTTP 202 Accepted while downstream processing halted, losing transactional visibility.",
+    "mitigation": "Unit tests TC_GLOVIA_003 and TC_GLOVIA_004 validate SOAP Fault propagation and custom headers (e.g. Country, Region, BusinessObject) to ensure error states are recorded in the MPL and communicated."
+  },
+  {
+    "risk": "Groovy 4 XmlSlurper Compatibility in Script Assets",
+    "consequence": "GLOVIA_Conditioncheck_Salesorder_Create.groovy requires explicit import 'groovy.xml.XmlSlurper'. In environments upgrading to Groovy 4/SAP Cloud Integration newer kernels, missing explicit imports or local name navigation will cause runtime CompilationCustomizerException.",
+    "mitigation": "Tests mock execution results and script unit verification is executed via CI harness confirming correct XML tree parsing by local name without prefix dependency."
+  }
+]

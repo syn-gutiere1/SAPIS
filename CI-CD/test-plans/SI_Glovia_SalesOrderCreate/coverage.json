@@ -1,34 +1,24 @@
 {
   "target_coverage_percent": 100,
   "coverage_by_component": {
-    "Sender_SOAP_Adapter": "100%",
-    "CallActivity_4_Set_Message_headers": "100%",
-    "ParallelGateway_74_Multicast": "100%",
-    "ExclusiveGateway_80_Router": "100%",
-    "SequenceFlow_82_SalesOrder": "100%",
-    "CallActivity_102_MessageMapping": "100%",
-    "CallActivity_13_CallHeaders": "100%",
-    "EndEvent_2_MessageEnd": "100%",
-    "SequenceFlow_113_SOReturn": "100%",
-    "CallActivity_71_CallHeaders": "100%",
-    "EndEvent_9_MessageEnd": "100%",
-    "SequenceFlow_110_Default": "100%",
-    "EndEvent_11_EscalationEnd": "100%",
-    "SubProcess_91_ExceptionSubprocess": "100%",
-    "CallActivity_97_ReadPayloadProperty": "100%",
-    "CallActivity_100_LogPayloadScript": "100%",
-    "EndEvent_95_ErrorEnd": "100%",
-    "CallActivity_77_Dead_Code": "0%",
-    "CallActivity_86_Dead_Code": "0%",
+    "Inbound_SOAP_Adapter_MessageFlow_114": "100%",
+    "Set_Message_Headers_CallActivity_4": "100%",
+    "Parallel_Multicast_Gateway_74": "100%",
+    "Router_ExclusiveGateway_80": "100%",
+    "SalesOrder_Branch_CallActivity_102_13": "100%",
+    "SOReturn_Branch_CallActivity_71": "100%",
+    "Default_Escalation_EndEvent_11": "100%",
+    "Exception_SubProcess_91": "100%",
+    "Floating_Activities_CallActivity_77_86": "0%",
     "CallActivity_77 (Groovy Script 2)": "0%",
     "CallActivity_86 (Content Modifier)": "0%"
   },
   "uncovered_paths": [
-    "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) and CallActivity_86 (Content Modifier extracting OrganizationId) are disconnected in the BPMN process definition and unreachable via sequence flows from StartEvent_2.",
+    "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) and CallActivity_86 (Content Modifier) have no incoming or outgoing BPMN sequence flows in the provided XML model.",
     "Unreachable in the process: CallActivity_77 (Groovy Script 2); CallActivity_86 (Content Modifier). These elements have no sequence flow connecting them to the flow, so no test can exercise them."
   ],
   "coverage_recommendations": [
-    "Connect CallActivity_77 and CallActivity_86 into the main sequence flow between CallActivity_4 and ParallelGateway_74 if order validation and organization ID extraction are business requirements.",
-    "If CallActivity_77 and CallActivity_86 are obsolete artifacts, delete them from the iFlow model to achieve true 100% executable model coverage."
+    "Reconnect CallActivity_77 and CallActivity_86 into the sequence flow between CallActivity_4 and ParallelGateway_74 so header OrderCodeValid is dynamically created before reaching ExclusiveGateway_80.",
+    "Once connected, add parametrized test iterations asserting 'OrderCodeValid == true' for codes 'YORB', 'YICB', 'POR', 'MNZ', 'PLM' and 'OrderCodeValid == false' for arbitrary string inputs."
   ]
 }
