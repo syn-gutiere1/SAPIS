@@ -494,6 +494,45 @@ It is written to `CI-CD/reports/<iFlow>/dashboard.html` and committed with the r
 of the evidence. The tabs are Overview, Tests, Scenarios, Risks, Coverage and
 Suggested fixes; the hash in the URL selects a tab, so a link can point at one.
 
+### Getting the dashboard after a push
+
+The workflow runs on every push to `sap-is` that changes an `.iflw` or a `.groovy`,
+generates the dashboard and **commits it back** to the same branch. Nothing has to be
+built by hand.
+
+> **Opening it in GitHub shows the source, not the page.** GitHub does not render
+> HTML from a repository - it displays the markup as text. That is deliberate on
+> their side, not a defect here. Use one of the three routes below to *see* the page.
+
+**1. The artifact (no Git needed).** Repository → **Actions** → the run →
+**Artifacts** → download `generated-tests-...` → extract → open
+`CI-CD/reports/<iFlow>/dashboard.html` in a browser. The same bundle holds
+`junit.xml`, `junit-groovy.xml`, `groovy_logs.txt` and `manifest.json`.
+
+**2. Clone and open.** Best when you already have the repository:
+
+```bash
+git fetch && git checkout sap-is && git pull
+start CI-CD/reports/SI_Glovia_SalesOrderCreate/dashboard.html   # Windows
+# open  CI-CD/reports/SI_Glovia_SalesOrderCreate/dashboard.html # macOS
+```
+
+**3. Download the single file.** Two views of the same file on GitHub:
+
+| View | URL | Use |
+|---|---|---|
+| blob | `github.com/<owner>/<repo>/blob/<branch>/<path>` | read it; has the download button |
+| raw | `raw.githubusercontent.com/<owner>/<repo>/<branch>/<path>` | fetch it with a tool |
+
+```bash
+gh api "repos/<owner>/<repo>/contents/CI-CD/reports/<iFlow>/dashboard.html?ref=sap-is" \
+  -H "Accept: application/vnd.github.raw" > dashboard.html
+```
+
+The page is self-contained, so a downloaded file opens offline with no server and no
+network. See [the fixtures README](CI-CD/groovy-fixtures/SI_Glovia_SalesOrderCreate/README.md)
+for where the hand-written Groovy fixtures live.
+
 ### Why a separate file instead of tabs inside `report.html`
 
 `report.html` is produced by `pytest-html`, which has no public hook for adding
@@ -511,6 +550,36 @@ external URL.
 Every input is optional. A file that is missing renders as "not available" with the
 reason, never as an empty section that could be mistaken for data: a reviewer has
 to be able to tell "no risks were found" from "the risks file was not produced".
+
+### Reading a result: which failures mean what
+
+A developer who gets a red run needs to know **where** to change something. Not every
+failure is an iFlow defect, and the two suites carry different weight. Read this in
+order:
+
+| Verdict | Means | Where to act |
+|---|---|---|
+| `pytest` red | The generated test disagrees with the flow's behaviour. The test is AI-generated code, so it can also be the test that is wrong. | the flow, or the test |
+| `Groovy harness` red | The **real** `.groovy` was compiled and executed and did not behave as the fixtures require. This is the authoritative verdict on a script. | the script, or the fixture |
+| `Groovy harness` red with `unable to resolve class` | The script does not compile on the Groovy 4 runtime. | the script — a real defect |
+| `Groovy harness` red with `MissingPropertyException: messageLogFactory` | The harness is at fault, not the flow. SAP CPI injects that variable into the script binding at runtime, and the harness injects it too. | nothing in the iFlow — report it |
+| `Groovy harness` red with `MissingMethodException` on a `Message` method | The stub set does not cover that method. A harness limitation. | nothing in the iFlow — report it |
+| `No reviewed fixtures at ...` | The fixtures were never committed for this script. | the fixtures, not the script |
+
+The distinction matters because the reverse is the expensive mistake: **a green
+pytest suite does not clear a script**. The generated suite simulates the flow's
+logic in Python, so it passes happily while the real `.groovy` raises on every call.
+That is exactly what happened here, and it is why the PR body carries both verdicts
+separately and why a green suite with a red harness is marked as a blocker.
+
+`ai_fix_suggestions.md` is written only when something failed, and it is a
+**hypothesis**. It has been right about a root cause and wrong in the same answer —
+it once diagnosed the missing `XmlSlurper` import correctly and then suggested
+`new XmlSlurper(false, false)` to sidestep namespaces, which would have hidden the
+real defect instead of fixing it. Check it against the artifact. It is also given a
+preamble explaining how the harness runs a script, so that it judges which layer a
+failure belongs to; if it still proposes a change that cannot apply to the iFlow,
+that is a gap worth reporting.
 
 ---
 

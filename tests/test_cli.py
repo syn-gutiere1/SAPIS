@@ -385,3 +385,66 @@ def test_analyze_failures_gateway_failure_returns_exit_3(
     )
 
     assert code == cli.EXIT_PORTKEY
+
+
+def test_analyze_failures_passes_context_to_the_model(
+    artifact: Path, environment, tmp_path: Path, monkeypatch
+):
+    """The preamble explains the harness and must reach the request."""
+    log = tmp_path / "logs.txt"
+    log.write_text("E   boom", encoding="utf-8")
+    context = tmp_path / "context.md"
+    context.write_text("The harness injects messageLogFactory.", encoding="utf-8")
+
+    capturado = {}
+
+    def _create(**kwargs):
+        capturado["messages"] = kwargs["messages"]
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content="suggestion"))],
+            usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1, total_tokens=2),
+            model="test-model",
+        )
+
+    client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=_create))
+    )
+    monkeypatch.setattr(cli.portkey_mod, "create_client", lambda *a, **k: client)
+
+    code = cli.main(
+        [
+            "--mode", "analyze-failures",
+            "--source", str(artifact),
+            "--logs", str(log),
+            "--context", str(context),
+            "--suggestions", str(tmp_path / "out.md"),
+        ]
+    )
+
+    assert code == cli.EXIT_OK
+    assert "messageLogFactory" in capturado["messages"][1]["content"]
+
+
+def test_analyze_failures_tolerates_a_missing_context_file(
+    artifact: Path, environment, tmp_path: Path, monkeypatch
+):
+    """The workflow passes a path that may not exist; it must not abort."""
+    log = tmp_path / "logs.txt"
+    log.write_text("E   boom", encoding="utf-8")
+    monkeypatch.setattr(
+        cli.portkey_mod,
+        "create_client",
+        lambda *a, **k: _fake_text_client("suggestion"),
+    )
+
+    code = cli.main(
+        [
+            "--mode", "analyze-failures",
+            "--source", str(artifact),
+            "--logs", str(log),
+            "--context", str(tmp_path / "missing.md"),
+            "--suggestions", str(tmp_path / "out.md"),
+        ]
+    )
+
+    assert code == cli.EXIT_OK

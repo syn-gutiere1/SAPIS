@@ -347,3 +347,69 @@ def test_suggest_fixes_limits_log_size(settings: Settings):
 
     sent = client.chat.completions.calls[0]["messages"][1]["content"]
     assert "L" * 501 not in sent
+
+
+def test_context_is_sent_before_the_logs(settings: Settings):
+    """
+    The preamble tells the model how the harness runs a script, which it cannot
+    infer from a log. Without it the model blamed the iFlow for a
+    `MissingPropertyException: messageLogFactory`, when the runtime injects that
+    variable and the harness does too.
+    """
+    client = _FakeClient(_response("ok"))
+
+    suggest_fixes(
+        "<xml/>",
+        {},
+        "log line",
+        context="The harness injects messageLogFactory.",
+        settings=settings,
+        client=client,
+    )
+
+    sent = client.chat.completions.calls[0]["messages"][1]["content"]
+    assert "The harness injects messageLogFactory." in sent
+    assert sent.index("The harness injects") < sent.index("--- SAP IFLOW XML ---")
+    assert "--- FAILURE LOGS ---" in sent
+
+
+def test_context_survives_log_truncation(settings: Settings):
+    """
+    The logs are truncated from the FRONT, so a preamble concatenated into them
+    would be the first thing dropped - precisely when the log is long enough to
+    need it. It is passed separately for this reason.
+    """
+    client = _FakeClient(_response("ok"))
+
+    suggest_fixes(
+        "<xml/>",
+        {},
+        "L" * 100_000,
+        context="KEEP-ME: the harness injects the binding.",
+        settings=settings,
+        client=client,
+        max_output_chars=200,
+    )
+
+    sent = client.chat.completions.calls[0]["messages"][1]["content"]
+    assert "KEEP-ME: the harness injects the binding." in sent
+
+
+def test_no_context_means_no_preamble(settings: Settings):
+    client = _FakeClient(_response("ok"))
+
+    suggest_fixes("<xml/>", {}, "log", settings=settings, client=client)
+
+    sent = client.chat.completions.calls[0]["messages"][1]["content"]
+    assert sent.startswith("--- SAP IFLOW XML ---")
+
+
+def test_system_prompt_asks_for_the_failing_layer(settings: Settings):
+    """The model must say whether the failure is the iFlow, a script or the harness."""
+    client = _FakeClient(_response("ok"))
+
+    suggest_fixes("<xml/>", {}, "log", settings=settings, client=client)
+
+    system = client.chat.completions.calls[0]["messages"][0]["content"]
+    assert "which layer" in system
+    assert "harness" in system

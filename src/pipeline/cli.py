@@ -336,12 +336,19 @@ def _cmd_analyze_failures(args: argparse.Namespace) -> int:
     scripts = {name: extract_mod.scrub(content) for name, content in scripts.items()}
     test_output = logs_path.read_text(encoding="utf-8", errors="replace")
 
+    # The preamble goes in its own slot so that truncating a long log cannot drop it.
+    context = ""
+    if args.context:
+        context_path = Path(args.context)
+        if context_path.is_file():
+            context = context_path.read_text(encoding="utf-8", errors="replace")
+
     iflow_name = iflow_file.stem if iflow_file else Path(args.source).stem
     print(f"[1/2] Analysing the failure log for {iflow_name} ({len(test_output)} chars)")
 
     try:
         suggestion = portkey_mod.suggest_fixes(
-            flow_xml, scripts, test_output, settings=settings
+            flow_xml, scripts, test_output, context=context, settings=settings
         )
     except portkey_mod.ConfigError as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)
@@ -395,7 +402,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--logs",
         default=None,
-        help="pytest log to analyze (analyze-failures mode).",
+        help="Failure log to analyse (analyze-failures mode).",
+    )
+    parser.add_argument(
+        "--context",
+        default=None,
+        help=(
+            "Preamble placed before the logs and OUTSIDE the truncation window "
+            "(analyze-failures mode). Explains how the harness executes a script, which "
+            "the model cannot infer from the logs alone."
+        ),
     )
     parser.add_argument(
         "--suggestions",

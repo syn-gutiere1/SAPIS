@@ -392,6 +392,7 @@ def suggest_fixes(
     scripts: dict[str, str],
     test_output: str,
     *,
+    context: str = "",
     settings: Settings | None = None,
     client: Any | None = None,
     sleep=time.sleep,
@@ -403,6 +404,12 @@ def suggest_fixes(
     The log may come from the generated pytest suite or from the Groovy harness.
     Both matter: when only the harness fails, the useful evidence is its output,
     which names the real script and the assertion that did not hold.
+
+    `context` is a preamble placed BEFORE the logs and outside the truncation window.
+    It explains how the harness executes a script, which the model cannot infer from
+    the logs alone. It is kept separate on purpose: the logs are truncated from the
+    front, so a preamble concatenated into them would be the first thing discarded
+    precisely when the log is long - the case where the model most needs it.
     """
     settings = settings or Settings.from_env()
     system_prompt = (
@@ -410,18 +417,24 @@ def suggest_fixes(
         "Integration Flow have failed. Analyze the failure logs alongside the original "
         "flow. Provide concrete suggestions on what needs to be fixed in the SAP IS XML or "
         "the Groovy scripts. "
+        "Identify which layer a failure belongs to - the iFlow, a Groovy script, the "
+        "generated test, or the test harness itself - and say so explicitly. Do not "
+        "propose changes for a failure caused by the harness or by missing test data. "
         f"Answer in the language corresponding to the ISO code {settings.language_code}."
     )
 
     prompt = (
+        f"{context}\n\n" if context.strip() else ""
+    ) + (
         "--- SAP IFLOW XML ---\n"
         f"{flow_xml[:20_000]}\n\n"
         "--- GROOVY SCRIPTS ---\n"
         f"{json.dumps(scripts, ensure_ascii=False)[:10_000]}\n\n"
-        "--- PYTEST FAILURE LOGS ---\n"
+        "--- FAILURE LOGS ---\n"
         f"{test_output[-max_output_chars:]}\n\n"
         "Based on the failure logs, what is misconfigured in the SAP iflow or scripts? "
-        "How do we fix it?"
+        "How do we fix it? If the evidence points at the harness, the generated test or "
+        "missing fixtures rather than the artifact, say that instead of proposing an edit."
     )
 
     resolved_client = create_client(settings, client=client)
