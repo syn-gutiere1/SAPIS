@@ -1,4 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
-  <SOAP:Body>
-    <invalid_xml_payload_without_closing_tags>

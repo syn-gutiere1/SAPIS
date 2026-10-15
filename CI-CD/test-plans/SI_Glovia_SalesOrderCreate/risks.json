@@ -1,22 +1,22 @@
 [
   {
-    "risk": "Orphaned Groovy Script and Content Modifier steps (CallActivity_77 and CallActivity_86) not connected to BPMN sequence flow",
-    "consequence": "Critical business logic for order code validation (YORB, YICB, POR, MNZ, PLM) and OrganizationId header extraction is completely bypassed during runtime, allowing invalid order types to proceed.",
-    "mitigation": "Unit tests assert exact route execution paths and confirm missing validation logic. Recommendations provide explicit BPMN connectivity adjustments before deploying to QA/Prod."
+    "risk": "Unattached Process Elements (Dead Code)",
+    "consequence": "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) and CallActivity_86 (Content Modifier for OrganizationId) exist in the BPMN model but have no sequence flow connections. Expected validations or validations for OrderCodeValid are not executed during runtime, potentially routing invalid orders.",
+    "mitigation": "Automated pipeline tests verify that routing decisions depend directly on explicit XML elements or externalized parameters. A lint check flags unconnected nodes in CI before deployment."
   },
   {
-    "risk": "Message loss due to One-Way SOAP Message Exchange Pattern (MEP) with returnExceptionToSender=false",
-    "consequence": "Calling systems receive an HTTP 202 Ack before downstream errors or Escalation End (RoutingConditionNotMet) events occur, resulting in silent failures without sender awareness.",
-    "mitigation": "Automated unit test TC_GLOVIA_003 and TC_GLOVIA_004 assert error state transitions and verify that the Exception Subprocess logs the payload attachment to MPL for monitoring visibility."
+    "risk": "Escalation EndEvent silently halting message delivery",
+    "consequence": "EndEvent_11 raises an escalation 'RoutingConditionNotMet'. Because returnExceptionToSender is set to false in collaboration properties, the sender receives a normal acknowledgment while the message stops without error escalation or receiver dispatch.",
+    "mitigation": "TC_GLOVIA_003 specifically checks the escalation path and asserts that the escalation code is logged in the Message Processing Log (MPL) to trigger alerting."
   },
   {
-    "risk": "Uninitialized / Unbound externalized parameters in gateway condition expressions ({{Glovia_Route_SalesOrder}} and {{Glovia_Route2_ReturnSalesOrder}})",
-    "consequence": "If tenant configurations lack parameter definitions, condition expressions evaluate to false or cause XPath parsing syntax errors, causing valid messages to land in Escalation End.",
-    "mitigation": "Test suite explicitly validates boundary evaluation of routing parameters and confirms default path behavior when conditions evaluate to false."
+    "risk": "Payload Loss during Mapping Failures",
+    "consequence": "If Message Mapping fails due to unexpected XML constructs or schema deviations, the enriched message body could be lost or incomplete for reprocessing.",
+    "mitigation": "CallActivity_4 sets ${in.body} into property 'InputPayload' immediately at entry. CallActivity_97 and CallActivity_100 ensure the original payload is restored and appended as an attachment in MPL before ErrorEndEvent EndEvent_95 is reached (covered by TC_GLOVIA_004)."
   },
   {
-    "risk": "Payload tampering or loss during exception handling in SubProcess_91",
-    "consequence": "If an error occurs before CallActivity_4 initializes ${in.body} into property.InputPayload, CallActivity_97 overwrites the message body with null, leaving no debug payload for Log_Payload.gsh.",
-    "mitigation": "Unit test TC_GLOVIA_004 validates that property.InputPayload is safely preserved and restored as an attachment in the error subprocess."
+    "risk": "Parallel Multicast with Single Branch",
+    "consequence": "ParallelGateway_74 is configured as a Parallel Multicast but only contains one outgoing flow (SequenceFlow_109) to ExclusiveGateway_80. If another branch is added without a join gateway, race conditions and duplicate executions occur.",
+    "mitigation": "Coverage analysis and unit assertions ensure that message sequencing is validated and single-branch routing behavior remains deterministic."
   }
 ]

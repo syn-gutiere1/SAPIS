@@ -4,13 +4,12 @@
   <SOAP:Body>
     <ns1:notifications>
       <ns1:Notification>
-        <ns1:Id>04k5g000000XYZ1AAO</ns1:Id>
+        <ns1:Id>04k000000000001</ns1:Id>
         <ns1:sObject>
-          <ns2:Id>a1B5g000000ABC1EAO</ns2:Id>
+          <ns2:Id>a01000000000001</ns2:Id>
           <ns2:giic_OrderTypeCode__c>YORB</ns2:giic_OrderTypeCode__c>
-          <ns2:giic_OrderNumber__c>SO-2026-1001</ns2:giic_OrderNumber__c>
-          <ns2:giic_Account__c>ACC-554422</ns2:giic_Account__c>
-          <ns2:giic_TotalAmount__c>15420.50</ns2:giic_TotalAmount__c>
+          <ns2:CustomerNumber>CUST-10023</ns2:CustomerNumber>
+          <ns2:TotalAmount>15420.50</ns2:TotalAmount>
         </ns1:sObject>
       </ns1:Notification>
     </ns1:notifications>
