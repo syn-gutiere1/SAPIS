@@ -1,22 +1,22 @@
 [
   {
-    "risk": "Unmatched routing conditions trigger Escalation End Event (EndEvent_11) resulting in unhandled message drop in OneWay MEP.",
-    "consequence": "Inbound Sales Orders and Return notifications that do not meet explicit router predicates are terminated abruptly without notifying the sender or delivering to Glovia REST receivers.",
-    "mitigation": "Automated scenario TC_GLOVIA_003 asserts that the default route branches to SequenceFlow_110 and produces escalation code 'RoutingConditionNotMet', allowing monitoring alert rules to be verified."
+    "risk": "Payload Loss During Exception Handling",
+    "consequence": "If mapping or script execution fails downstream and the original request payload is not preserved, operators cannot reconstruct or replay failed sales transactions.",
+    "mitigation": "Enricher CallActivity_4 caches raw body into ${property.InputPayload} at start, and CallActivity_97 in SubProcess_91 restores and attaches it using Log_Payload script."
   },
   {
-    "risk": "Disconnection of floating elements CallActivity_77 and CallActivity_86 in BPMN model definition.",
-    "consequence": "The validation script GLOVIA_Conditioncheck_Salesorder_Create.groovy and XPath header extraction for OrganizationId are never executed during runtime, potentially leading to incorrect routing or missing downstream parameters.",
-    "mitigation": "Test suite asserts on exact route branch outcomes and identifies disconnected canvas artifacts in coverage analysis so developers can connect or retire dead steps."
+    "risk": "Unrouted Business Messages Dropped Silently",
+    "consequence": "Orders with new, unconfigured, or altered OrderTypeCode values are neither processed nor tracked, causing silent business loss and order fulfillment delays.",
+    "mitigation": "ExclusiveGateway_80 routes non-matching messages to default SequenceFlow_110 into EscalationEndEvent EndEvent_11 with explicit ErrorCode RoutingConditionNotMet."
   },
   {
-    "risk": "MessageMapping_102 failure due to missing mandatory XML elements in Salesforce outbound notification body.",
-    "consequence": "Uncaught XML transformation exceptions halt order creation for participant Glovia_Get_CreateOrder_Details_REST_Receiver, producing message processing failures.",
-    "mitigation": "TC_GLOVIA_004 verifies that SubProcess_91 captures the failure, reads back ${property.InputPayload} safely via CallActivity_97, attaches it for support analysis via CallActivity_100, and ends cleanly at EndEvent_95."
+    "risk": "Disconnected Pipeline Artifacts in BPMN Model",
+    "consequence": "CallActivity_86 (Content Modifier extracting OrganizationId) and CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) are orphaned nodes in the BPMN XML without sequence flow connections, leading to dead configuration or skipped validations.",
+    "mitigation": "Integration unit suite identifies uncalled artifacts and asserts routing logic behavior independently to verify whether routing relies on script evaluation or direct XPath expressions."
   },
   {
-    "risk": "Parallel Multicast gateway ParallelGateway_74 configured with a single outgoing sequence flow.",
-    "consequence": "Unnecessary thread overhead and architectural drift if additional branches are added without synchronizing join gateways.",
-    "mitigation": "TC_GLOVIA_001 and TC_GLOVIA_002 validate that single-branch execution through SequenceFlow_109 does not cause deadlocks or race conditions."
+    "risk": "Receiver Service Timeout and Lack of Retry on Endpoints",
+    "consequence": "Network timeouts communicating with REST receivers (Participant_2 / Participant_112) could cause duplicate order creations or lost acknowledgments.",
+    "mitigation": "Exception subprocess catches connectivity faults, writes MPL audit attachments, and propagates standard SOAP Fault to sender to trigger upstream retry."
   }
 ]

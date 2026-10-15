@@ -1,28 +1,22 @@
 {
   "target_coverage_percent": 100,
   "coverage_by_component": {
-    "StartEvent_2 (SOAP Inbound)": "100%",
-    "CallActivity_4 (Set Message Headers Enricher)": "100%",
-    "ParallelGateway_74 (Multicast Gateway)": "100%",
-    "ExclusiveGateway_80 (Router)": "100%",
-    "CallActivity_102 (Message Mapping 1)": "100%",
-    "CallActivity_13 (Call Headers Script 1)": "100%",
-    "CallActivity_71 (Call Headers Script 2)": "100%",
-    "EndEvent_2 (Sales Order Message End)": "100%",
-    "EndEvent_9 (Return Order Message End)": "100%",
-    "EndEvent_11 (Escalation End Event)": "100%",
-    "SubProcess_91 (Exception Subprocess)": "100%",
-    "CallActivity_97 (Read Payload from Property)": "100%",
-    "CallActivity_100 (Log Payload Script)": "100%",
-    "EndEvent_95 (Error End Event)": "100%",
-    "CallActivity_77 (Groovy Script 2 - Orphaned)": "0%",
-    "CallActivity_86 (Content Modifier - Orphaned)": "0%"
+    "Inbound_SOAP_MessageFlow_114": "100%",
+    "CallActivity_4_Set_Message_headers": "100%",
+    "ParallelGateway_74": "100%",
+    "ExclusiveGateway_80_Routing": "100%",
+    "CallActivity_102_MessageMapping": "100%",
+    "CallActivity_13_GenericHeaders": "100%",
+    "CallActivity_71_GenericHeaders": "100%",
+    "EndEvent_11_Escalation": "100%",
+    "SubProcess_91_ExceptionHandling": "100%",
+    "Orphaned_Nodes_CallActivity_77_86": "0%"
   },
   "uncovered_paths": [
-    "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) and CallActivity_86 (Content Modifier) are completely disconnected in the BPMN process definition (no incoming or outgoing sequence flows)."
+    "BPMN diagram contains orphaned/unlinked nodes: CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) and CallActivity_86 (XPath Content Modifier). Because there are no sequence flows connected to these activities in Process_1, runtime execution of these nodes does not occur in standard message lifecycle."
   ],
   "coverage_recommendations": [
-    "Either wire CallActivity_86 and CallActivity_77 between CallActivity_4 and ExclusiveGateway_80 to enforce OrderCodeValid validation before routing, or delete the dead artifacts from the iFlow model.",
-    "If CallActivity_77 is connected, introduce dedicated test cases asserting header 'OrderCodeValid' set to 'true' for codes ['YORB', 'YICB', 'POR', 'MNZ', 'PLM'] and 'false' for invalid codes to achieve 100% active artifact coverage."
+    "Re-link CallActivity_77 and CallActivity_86 into the main sequence flow before ExclusiveGateway_80, or remove them from the iFlow bundle if replaced by parameter expressions.",
+    "Deploy integration test scenarios validating externalized parameter resolutions for {{Glovia_Route_SalesOrder}} and {{Glovia_Route2_ReturnSalesOrder}} across all SAP landscape tiers."
   ]
 }

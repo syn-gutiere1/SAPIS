@@ -2,7 +2,7 @@
   "iflow": "SI_Glovia_SalesOrderCreate",
   "source": "CI-CD/iflows/SI_Glovia_SalesOrderCreate",
   "source_relative": "src/main/resources/scenarioflows/integrationflow/SI_Glovia_SalesOrderCreate.iflw",
-  "iflow_sha256": "2563d68b01976353e6b521b3f8b67258c3317f51c88fd33e254cb27a20af741b",
+  "iflow_sha256": "42745cc24ea7057e2e96ed68d85f93f21346c3c72353451f9212ca07576bfb77",
   "scripts_sha256": {
     "script/GLOVIA_Conditioncheck_Salesorder_Create.groovy": "ac97a6829314a73c8d8203074bb7ca8ecc2b85ba12e0085e9f0a7bef39e1a28b",
     "script/Interface_Generic_Headers.groovy": "668d03bddd37e6c742215eceef1bcf09a69fbf128a45e4ee2cf17f66e0244181",
@@ -19,10 +19,10 @@
     "testdata_files": 4,
     "files": [
       "cases.json",
-      "testdata/sales_order_standard.xml",
-      "testdata/sales_order_return.xml",
-      "testdata/sales_order_unmatched_route.xml",
-      "testdata/sales_order_malformed.xml",
+      "testdata/sales_order_valid.xml",
+      "testdata/sales_return_valid.xml",
+      "testdata/unmatched_route.xml",
+      "testdata/malformed_mapping_input.xml",
       "test_flow.py",
       "risks.json",
       "coverage.json",
@@ -36,20 +36,20 @@
     "temperature": 0.2,
     "language_code": "en_US",
     "prompt_tokens": 15087,
-    "completion_tokens": 8080,
-    "total_tokens": 23167
+    "completion_tokens": 8466,
+    "total_tokens": 23553
   },
   "prompt": {
     "file": "prompt/prompt_template.txt",
-    "sha256": "029da9c071dee19082a7c1e620b4f2cbdb46540e5113e3ce53f5213e0acb35b8"
+    "sha256": "2cbb57cb277a7da3b9a6b1f02b610fa7ecbf4ff66bf8ef8630ac3bbba83e83ba"
   },
   "truncated": [],
   "attempts": 1,
-  "duration_seconds": 49.294,
-  "generated_at": "2026-10-15T04:02:52Z",
+  "duration_seconds": 52.33,
+  "generated_at": "2026-10-15T04:07:57Z",
   "environment": {
-    "github_run_id": "38679296691",
-    "github_sha": "7fc841394459285d7c32830b6d4c30eb18aa1735",
+    "github_run_id": "38679735421",
+    "github_sha": "4b99aa85e60cf2496cdf24a01a60102ee6a5a843",
     "github_ref": "refs/heads/sap-is",
     "github_repository": "syn-gutiere1/SAPIS"
   }

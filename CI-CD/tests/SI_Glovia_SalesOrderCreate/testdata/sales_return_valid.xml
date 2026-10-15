@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns1="http://soap.sforce.com/2005/09/outbound" xmlns:ns2="urn:sobject.enterprise.soap.sforce.com">
+  <SOAP:Header/>
+  <SOAP:Body>
+    <ns1:notifications>
+      <ns1:OrganizationId>00D50000000XXXXEAA</ns1:OrganizationId>
+      <ns1:Notification>
+        <ns1:Id>04v50000000XXXXEAB</ns1:Id>
+        <ns1:sObject>
+          <ns2:Id>80150000000XXXXEAB</ns2:Id>
+          <ns2:giic_OrderTypeCode__c>POR</ns2:giic_OrderTypeCode__c>
+          <ns2:OrderNumber>RET-2026-1044</ns2:OrderNumber>
+          <ns2:TotalAmount>3200.00</ns2:TotalAmount>
+          <ns2:CurrencyIsoCode>USD</ns2:CurrencyIsoCode>
+        </ns1:sObject>
+      </ns1:Notification>
+    </ns1:notifications>
+  </SOAP:Body>
+</SOAP:Envelope>
