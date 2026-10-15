@@ -898,4 +898,5 @@
             </bpmndi:BPMNEdge>
         </bpmndi:BPMNPlane>
     </bpmndi:BPMNDiagram>
+<!-- pipeline validation run -->
 </bpmn2:definitions>
