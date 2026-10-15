@@ -181,6 +181,92 @@ def _package_name(artifact_root: str, repo_name: str) -> str:
     return Path(artifact_root).name
 
 
+def _package_prefix(iflow_relative: str) -> str:
+    """
+    The `src/main/resources`-style prefix an iFlow lives under, or `""`.
+
+    A changed file belongs to an artifact when it sits under this prefix, not under
+    the `.iflw`'s own directory: the `.iflw` lives in
+    `.../scenarioflows/integrationflow/` while its scripts live in the sibling
+    `.../script/`, so the common ancestor is the resources root.
+    """
+    parts = Path(iflow_relative).parts
+    for index in range(len(parts) - 2):
+        if parts[index : index + 3] == ("src", "main", "resources"):
+            return Path(*parts[: index + 3]).as_posix()
+    return ""
+
+
+def enumerate_artifacts(repo: Path) -> list[tuple[str, str, str]]:
+    """
+    Every iFlow artifact in the repository, as `(path, artifact_root, iflow_relative)`.
+
+    `path` is the package root used as the repository-relative source directory,
+    `artifact_root` is the `.iflw` directory relative to that root, and
+    `iflow_relative` is the `.iflw` path relative to the repository.
+    """
+    found: list[tuple[str, str, str]] = []
+
+    for iflow in tracked_iflow_files(repo):
+        root = artifact_root_for(iflow)
+        if root == ".":
+            artifact_dir = str(Path(iflow).parent.as_posix())
+        else:
+            artifact_dir = Path(iflow).relative_to(root).parent.as_posix()
+
+        found.append(
+            (
+                root,
+                artifact_dir if artifact_dir != "." else "",
+                iflow,
+            )
+        )
+
+    return found
+
+
+def _assign_to_artifact(
+    relative: str,
+    repo: Path,
+    artifacts: list[tuple[str, str, str]],
+) -> str | None:
+    """
+    Return the `.iflw` whose package contains `relative`, or None.
+
+    The match uses the package prefix (`src/main/resources` and above) rather than
+    the `.iflw` directory, because the scripts live in a sibling folder. The
+    **deepest** matching package wins, so an artifact nested inside another one is
+    handled correctly.
+
+    A file that is under no package - the pipeline's own code, a workflow,
+    documentation - belongs to no iFlow and must not create a job for one. The
+    previous implementation walked *up* from the changed file until it found any
+    `*.iflw`, so in the single-repository layout every change at the root resolved
+    to the first iFlow in the tree.
+    """
+    target = Path(relative)
+    best: str | None = None
+    best_depth = -1
+
+    for _root, _artifact_dir, iflow_relative in artifacts:
+        prefix = _package_prefix(iflow_relative)
+        if not prefix:
+            # Flat layout: the artifact is the `.iflw`'s own directory.
+            prefix_dir = Path(iflow_relative).parent
+        else:
+            prefix_dir = Path(prefix)
+
+        contains = prefix_dir in (Path("."), Path("")) or target.is_relative_to(prefix_dir)
+        if not contains:
+            continue
+
+        depth = 0 if prefix_dir in (Path("."), Path("")) else len(prefix_dir.parts)
+        if depth > best_depth:
+            best, best_depth = iflow_relative, depth
+
+    return best
+
+
 # ---------------------------------------------------------------------------
 # Matrix assembly
 # ---------------------------------------------------------------------------
@@ -198,6 +284,8 @@ def build_matrix(
     else:
         changed = [path for path in changed if not is_ignored(path)]
 
+    known = enumerate_artifacts(repo)
+
     # 1) Discover the artifacts touched.
     artifact_roots: dict[str, dict] = {}
 
@@ -206,12 +294,11 @@ def build_matrix(
         if path.suffix.lower() == IFLOW_SUFFIX:
             iflow_relative = relative
         else:
-            iflow_file = _find_artifact_iflow(relative, repo)
-            if iflow_file is None:
-                # Change that does not belong to any iFlow artifact (e.g. an
-                # automation script outside src/). Generates no job.
+            iflow_relative = _assign_to_artifact(relative, repo, known)
+            if iflow_relative is None:
+                # Belongs to no iFlow artifact: the pipeline's own code, a
+                # workflow, or documentation. It generates no job.
                 continue
-            iflow_relative = iflow_file.relative_to(repo).as_posix()
 
         root = artifact_root_for(iflow_relative)
         entry = artifact_roots.setdefault(

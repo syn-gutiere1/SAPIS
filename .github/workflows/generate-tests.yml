@@ -196,8 +196,12 @@ jobs:
         run: pip install -r requirements-ci.txt
 
       # --- generation -------------------------------------------------------
+      # Generation happens when the `.iflw` changed, and ALSO when no suite is
+      # committed yet. The second half matters: "skip and reuse the versioned
+      # tests" is only valid if a suite is actually in the repository. On the first
+      # run after the artifacts start being committed there is none, and reusing
+      # nothing left the job claiming it had tested a flow it never looked at.
       - name: Generate the test package
-        if: matrix.has_iflow_change
         env:
           PORTKEY_AUTH_TOKEN: ${{ secrets.PORTKEY_AUTH_TOKEN }}
           PORTKEY_BASE_URL: ${{ vars.PORTKEY_BASE_URL }}
@@ -208,19 +212,28 @@ jobs:
           set -uo pipefail
           mkdir -p "$TESTS_DIR" "$PLANS_DIR" "$REPORTS_DIR"
 
-          echo "Generating from $SOURCE_DIR (the .iflw changed in this push)."
+          if [ "${{ matrix.has_iflow_change }}" != "true" ] && [ -f "$TESTS_DIR/test_flow.py" ]; then
+            echo "::notice::The .iflw of ${{ matrix.iflow }} did not change and a suite is already committed: reusing it."
+            echo "Generation runs at temperature > 0 with no seed, so regenerating from an unchanged .iflw"
+            echo "would rewrite test_flow.py with equivalent content and make the PR unreviewable. A change in"
+            echo "a script is covered by the Groovy harness, which executes the real .groovy."
+            {
+              echo ""
+              echo "> Generation skipped for \`${{ matrix.iflow }}\`: the \`.iflw\` did not change and a suite is committed."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ "${{ matrix.has_iflow_change }}" != "true" ]; then
+            echo "::warning::No committed suite for ${{ matrix.iflow }}: generating even though the .iflw did not change."
+          fi
+
+          echo "Generating from $SOURCE_DIR."
           python run.py \
             --source "$SOURCE_DIR" \
             --out "$TESTS_DIR" \
             --plans "$PLANS_DIR" \
             --json-report "$REPORTS_DIR/manifest.json"
-
-      - name: Explain the skipped generation
-        if: ${{ !matrix.has_iflow_change }}
-        run: |
-          set -uo pipefail
-          echo "::notice::The .iflw of ${{ matrix.iflow }} did not change: the tests already versioned are reused."
-          echo "Generation has temperature > 0 and no seed, so regenerating from an unchanged .iflw would rewrite test_flow.py with equivalent content and make the PR unreviewable. A change in a script is covered by the harness, which runs the real .groovy."
 
       # A run that did not generate must still have a suite to run; otherwise the
       # job would report success having tested nothing.
@@ -228,7 +241,7 @@ jobs:
         run: |
           set -uo pipefail
           if [ ! -f "$TESTS_DIR/test_flow.py" ]; then
-            echo "::error::No test_flow.py in $TESTS_DIR. The generation did not run (unchanged .iflw with no versioned suite) or it failed; run the workflow manually to generate it."
+            echo "::error::No test_flow.py in $TESTS_DIR. Generation did not produce a suite, or an unchanged .iflw had none committed. Run the workflow manually to generate it."
             exit 1
           fi
           echo "Suite found: $TESTS_DIR/test_flow.py"
@@ -411,6 +424,35 @@ jobs:
             --logs "$REPORTS_DIR/pytest_logs.txt" \
             --iflow "${{ matrix.iflow }}" \
             --artifact-name "$ARTIFACT_NAME" >> "$GITHUB_STEP_SUMMARY"
+
+      # The pytest report only shows tests. This page puts the plan, the risks,
+      # the coverage estimate and the suggested fixes next to them, in one
+      # self-contained file that works offline.
+      - name: Build the evidence dashboard
+        if: always()
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          python scripts/build_dashboard.py \
+            --iflow "${{ matrix.iflow }}" \
+            --cases "$PLANS_DIR/cases.json" \
+            --risks "$PLANS_DIR/risks.json" \
+            --coverage "$PLANS_DIR/coverage.json" \
+            --manifest "$REPORTS_DIR/manifest.json" \
+            --junit "$REPORTS_DIR/junit.xml" \
+            --suggestions "$REPORTS_DIR/ai_fix_suggestions.md" \
+            --output "$REPORTS_DIR/dashboard.html"
+
+      # --- cleanup before versioning ----------------------------------------
+      # pytest writes `__pycache__` inside the test folder. This runs BEFORE the
+      # evidence is published so the `.pyc` reaches neither the repository nor the
+      # artifact - it did reach both in the first real run.
+      - name: Remove non-versionable leftovers
+        if: always()
+        continue-on-error: true
+        run: |
+          find "$TESTS_DIR" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
+          find "$TESTS_DIR" -type d -name .pytest_cache -prune -exec rm -rf {} + 2>/dev/null || true
 
       - name: Publish the evidence
         if: always()

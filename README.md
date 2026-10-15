@@ -35,12 +35,13 @@ access to credentials before that review.
 |   |-- build_matrix.py             # git diff -> changed iFlows + has_iflow_change
 |   |-- check_generated_tests.py    # static checks on the generated suite
 |   |-- derive_endpoint.py          # reads the HTTP trigger out of the .iflw (unused, see below)
+|-- build_dashboard.py           # single self-contained HTML dashboard
 |   |-- summarize.py                # Job Summary of the test workflow
 |   `-- write_pr_body.py            # PR body built from the evidence
 |-- groovy-harness/
 |   `-- TestHarness.groovy          # runs the REAL .groovy scripts
 |-- stubs/                          # SAP CPI classes (Message, MessageLog, ...)
-|-- tests/                          # the pipeline's own pytest suite (211 tests)
+|-- tests/                          # the pipeline's own pytest suite (236 tests)
 |-- legacy/                         # original pipeline, historical reference
 `-- .github/workflows/
     `-- generate-tests.yml          # sap-is -> tests -> PR into main
@@ -183,7 +184,7 @@ pytest
 puts `src/` on `sys.path` before any import, so `pytest` from the repository root works
 without further setup.
 
-**Current count: 222 tests**, all passing. Verified with `python -m pytest -q` in this
+**Current count: 236 tests**, all passing. Verified with `python -m pytest -q` in this
 checkout, with Groovy on `PATH`.
 
 `conftest.py` replaces the `tmp_path` and `tmp_path_factory` fixtures. The native
@@ -452,6 +453,48 @@ The tenant polls or schedules this flow, so there is no webhook to call.
 
 With `--fail-if-no-trigger` the exit code becomes 1, which is what a CI job uses to
 decide between "run the smoke test" and "skip it with an honest message".
+
+---
+
+## The evidence dashboard
+
+`report.html` shows test results. The dashboard shows the whole run: the plan, the
+risks, the coverage estimate and the suggested fixes next to the results, in one
+page with tabs.
+
+```bash
+python scripts/build_dashboard.py \
+  --iflow SI_Glovia_SalesOrderCreate \
+  --cases CI-CD/test-plans/SI_Glovia_SalesOrderCreate/cases.json \
+  --risks CI-CD/test-plans/SI_Glovia_SalesOrderCreate/risks.json \
+  --coverage CI-CD/test-plans/SI_Glovia_SalesOrderCreate/coverage.json \
+  --manifest CI-CD/reports/SI_Glovia_SalesOrderCreate/manifest.json \
+  --junit CI-CD/reports/SI_Glovia_SalesOrderCreate/junit.xml \
+  --suggestions CI-CD/reports/SI_Glovia_SalesOrderCreate/ai_fix_suggestions.md \
+  --output CI-CD/reports/SI_Glovia_SalesOrderCreate/dashboard.html
+```
+
+It is written to `CI-CD/reports/<iFlow>/dashboard.html` and committed with the rest
+of the evidence. The tabs are Overview, Tests, Scenarios, Risks, Coverage and
+Suggested fixes; the hash in the URL selects a tab, so a link can point at one.
+
+### Why a separate file instead of tabs inside `report.html`
+
+`report.html` is produced by `pytest-html`, which has no public hook for adding
+tabs. Adding them means monkey-patching someone else's HTML, which breaks on their
+next release. A page of our own is simpler and lets the plan and the risks be
+first-class content rather than attachments.
+
+### Why it is self-contained
+
+CSS and JavaScript are inlined and **no CDN is referenced**. Evidence has to be
+readable from a downloaded artifact, from a Release, or from an e-mail attachment,
+with no network access. There is a test asserting that the page contains no
+external URL.
+
+Every input is optional. A file that is missing renders as "not available" with the
+reason, never as an empty section that could be mistaken for data: a reviewer has
+to be able to tell "no risks were found" from "the risks file was not produced".
 
 ---
 
