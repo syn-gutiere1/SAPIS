@@ -144,8 +144,35 @@ def build_body(evidence_dir: Path, commit: str | None, plans_root: Path | None =
                 manifest, path, _locate_plans(path, plans_root)
             )
 
+    lines += _suggestions_section(evidence_dir)
     lines += ["", CHECKLIST]
     return "\n".join(lines) + "\n"
+
+
+def _suggestions_section(evidence_dir: Path) -> list[str]:
+    """
+    Include the model's suggested fixes, when the suite failed.
+
+    The suggestion is written during the run, next to the evidence, and only when
+    pytest failed; it is the artifact that says what is probably wrong in the iFlow
+    rather than merely what broke. It belongs in the PR body because that is where
+    the reviewer is already looking.
+    """
+    suggestions = sorted(evidence_dir.rglob("suggestions-*.md"))
+    if not suggestions:
+        return []
+
+    lines: list[str] = []
+    for path in suggestions:
+        try:
+            content = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if not content:
+            continue
+        lines += ["", "---", "", content, ""]
+
+    return lines
 
 
 def _locate_plans(manifest_path: Path, plans_root: Path | None) -> Path:

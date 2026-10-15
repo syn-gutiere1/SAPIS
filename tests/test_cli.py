@@ -295,3 +295,93 @@ def test_script_with_secret_is_cleaned_before_submission(
     submitted_prompt = captured["messages"][1]["content"]
     assert "SuperSecret123" not in submitted_prompt
     assert "[REDACTED]" in submitted_prompt
+
+
+# ---------------------------------------------------------------------------
+# analyze-failures mode
+# ---------------------------------------------------------------------------
+
+
+def _fake_text_client(text: str):
+    """A client whose completion is plain text, as suggest_fixes expects."""
+    response = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=text))],
+        usage=SimpleNamespace(prompt_tokens=5, completion_tokens=5, total_tokens=10),
+        model="test-model",
+    )
+    return SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=lambda **_: response))
+    )
+
+
+def test_analyze_failures_requires_logs(artifact: Path, environment, capsys):
+    code = cli.main(["--mode", "analyze-failures", "--source", str(artifact)])
+
+    assert code == cli.EXIT_CONFIG
+    assert "--logs is required" in capsys.readouterr().err
+
+
+def test_analyze_failures_missing_log_returns_exit_2(
+    artifact: Path, environment, tmp_path: Path, capsys
+):
+    code = cli.main(
+        [
+            "--mode", "analyze-failures",
+            "--source", str(artifact),
+            "--logs", str(tmp_path / "missing.txt"),
+        ]
+    )
+
+    assert code == cli.EXIT_CONFIG
+    assert "pytest log not found" in capsys.readouterr().err
+
+
+def test_analyze_failures_writes_suggestions(
+    artifact: Path, environment, tmp_path: Path, monkeypatch
+):
+    log = tmp_path / "pytest_logs.txt"
+    log.write_text("E   AssertionError: expected true, got false", encoding="utf-8")
+    monkeypatch.setattr(
+        cli.portkey_mod,
+        "create_client",
+        lambda *a, **k: _fake_text_client("Point 1: fix the namespace navigation."),
+    )
+    destination = tmp_path / "out" / "ai_fix_suggestions.md"
+
+    code = cli.main(
+        [
+            "--mode", "analyze-failures",
+            "--source", str(artifact),
+            "--logs", str(log),
+            "--suggestions", str(destination),
+        ]
+    )
+
+    assert code == cli.EXIT_OK
+    written = destination.read_text(encoding="utf-8")
+    assert "Suggested fixes" in written
+    assert "fix the namespace navigation" in written
+    assert "hypothesis" in written
+
+
+def test_analyze_failures_gateway_failure_returns_exit_3(
+    artifact: Path, environment, tmp_path: Path, monkeypatch
+):
+    log = tmp_path / "pytest_logs.txt"
+    log.write_text("E   boom", encoding="utf-8")
+
+    class Broken:
+        def __init__(self):
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(
+                    create=lambda **_: (_ for _ in ()).throw(RuntimeError("400 bad request"))
+                )
+            )
+
+    monkeypatch.setattr(cli.portkey_mod, "create_client", lambda *a, **k: Broken())
+
+    code = cli.main(
+        ["--mode", "analyze-failures", "--source", str(artifact), "--logs", str(log)]
+    )
+
+    assert code == cli.EXIT_PORTKEY

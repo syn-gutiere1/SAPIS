@@ -186,6 +186,42 @@ def test_body_ignores_an_invalid_manifest(tmp_path: Path):
     assert "| `FlowA` | - | - | - | - | - |" in body
 
 
+def test_body_includes_suggested_fixes_when_present(tmp_path: Path):
+    """
+    The suggested fixes are written only when the suite failed. They say what is
+    probably wrong in the iFlow, so they belong where the reviewer is looking.
+    """
+    _evidence(tmp_path, "results-Pacote-FlowA")
+    (tmp_path / "suggestions-SI_FlowA.md").write_text(
+        "### Suggested fixes for `SI_FlowA`\n\n"
+        "The Groovy condition script must navigate by local names.",
+        encoding="utf-8",
+    )
+
+    body = write_pr_body.build_body(tmp_path, None)
+
+    assert "Suggested fixes" in body
+    assert "navigate by local names" in body
+
+
+def test_body_omits_suggestions_when_absent(tmp_path: Path):
+    """A passing suite produces no suggestion file, and the body must not imply one."""
+    _evidence(tmp_path, "results-Pacote-FlowA")
+
+    body = write_pr_body.build_body(tmp_path, None)
+
+    assert "Suggested fixes" not in body
+
+
+def test_body_ignores_an_empty_suggestion_file(tmp_path: Path):
+    _evidence(tmp_path, "results-Pacote-FlowA")
+    (tmp_path / "suggestions-SI_FlowA.md").write_text("   \n", encoding="utf-8")
+
+    body = write_pr_body.build_body(tmp_path, None)
+
+    assert "Suggested fixes" not in body
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------

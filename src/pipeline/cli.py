@@ -301,6 +301,73 @@ def _cmd_generate(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _cmd_analyze_failures(args: argparse.Namespace) -> int:
+    """
+    Send the pytest log back to the model and write `ai_fix_suggestions.md`.
+
+    This is the useful half of a failing run: the reports say *what* broke, and
+    this says what is probably wrong in the iFlow. The function existed but had no
+    caller, so the artifact was never produced.
+    """
+    extract_mod, portkey_mod, _writer_mod = _modules()
+
+    if not args.logs:
+        print("[ERROR] --logs is required in analyze-failures mode.", file=sys.stderr)
+        return EXIT_CONFIG
+
+    logs_path = Path(args.logs)
+    if not logs_path.is_file():
+        print(f"[ERROR] pytest log not found: {logs_path}", file=sys.stderr)
+        return EXIT_CONFIG
+
+    try:
+        flow_xml, scripts, iflow_file = extract_mod.extract(Path(args.source))
+    except extract_mod.ExtractionError as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        return EXIT_CONFIG
+
+    try:
+        settings = portkey_mod.Settings.from_env()
+    except portkey_mod.ConfigError as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        return EXIT_CONFIG
+
+    flow_xml = extract_mod.scrub(flow_xml)
+    scripts = {name: extract_mod.scrub(content) for name, content in scripts.items()}
+    test_output = logs_path.read_text(encoding="utf-8", errors="replace")
+
+    iflow_name = iflow_file.stem if iflow_file else Path(args.source).stem
+    print(f"[1/2] Analysing the failure log for {iflow_name} ({len(test_output)} chars)")
+
+    try:
+        suggestion = portkey_mod.suggest_fixes(
+            flow_xml, scripts, test_output, settings=settings
+        )
+    except portkey_mod.ConfigError as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        return EXIT_CONFIG
+    except Exception as exc:  # noqa: BLE001 - gateway failure maps to exit 3
+        print(f"[ERROR] LLM call failed: {exc}", file=sys.stderr)
+        return EXIT_PORTKEY
+
+    destino = Path(args.suggestions) if args.suggestions else Path(args.out) / "ai_fix_suggestions.md"
+    destino.parent.mkdir(parents=True, exist_ok=True)
+
+    cabecalho = (
+        f"# Suggested fixes — {iflow_name}\n\n"
+        f"Generated from the pytest failure log of commit "
+        f"`{os.environ.get('GITHUB_SHA', 'local')[:12]}`.\n\n"
+        "> Written by a model from the iFlow XML, its scripts and the failure log. "
+        "It is a hypothesis to speed up the investigation, not a verdict: check it "
+        "against the artifact before changing anything.\n\n"
+        "---\n\n"
+    )
+    destino.write_text(cabecalho + suggestion + "\n", encoding="utf-8")
+    print(f"[2/2] Written: {destino}")
+
+    return EXIT_OK
+
+
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="pipeline",
@@ -308,9 +375,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--mode",
-        choices=("extract", "generate"),
+        choices=("extract", "generate", "analyze-failures"),
         default="generate",
-        help="extract: only reads and summarizes the artifact. generate: reads, calls the LLM and writes (default).",
+        help=(
+            "extract: only reads and summarizes the artifact. "
+            "generate: reads, calls the LLM and writes (default). "
+            "analyze-failures: sends the pytest log to the LLM and writes ai_fix_suggestions.md."
+        ),
     )
     parser.add_argument(
         "--source",
@@ -320,6 +391,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--out", default="tests", help="Destination for test_flow.py and testdata/.")
     parser.add_argument("--plans", default=None, help="Destination for cases/risks/coverage.json.")
     parser.add_argument("--json-report", default=None, help="Path to manifest.json.")
+    parser.add_argument(
+        "--logs",
+        default=None,
+        help="pytest log to analyze (analyze-failures mode).",
+    )
+    parser.add_argument(
+        "--suggestions",
+        default=None,
+        help="Where to write ai_fix_suggestions.md (analyze-failures mode).",
+    )
     parser.add_argument(
         "--env-file",
         default=None,
@@ -336,6 +417,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.mode == "extract":
         return _cmd_extract(args)
+    if args.mode == "analyze-failures":
+        return _cmd_analyze_failures(args)
     return _cmd_generate(args)
 
 

@@ -258,8 +258,12 @@ jobs:
             2>&1 | tee "$REPORTS_DIR/pytest_logs.txt"
 
       # --- real Groovy scripts ----------------------------------------------
+      # Gated on the artifact having changed at all, not only on a `.groovy`
+      # change. A change to the `.iflw` can alter the flow behaviour, so the real
+      # scripts must run then too; gating only on `.groovy` silently skipped the
+      # harness on exactly the change that matters most.
       - name: Install JDK 17
-        if: contains(join(matrix.changed_files, ' '), '.groovy')
+        if: matrix.has_iflow_change || contains(join(matrix.changed_files, ' '), '.groovy')
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -269,7 +273,7 @@ jobs:
       # the stubs and the script on demand. `groovyc` would also be a trap on
       # Windows, where it is a batch file.
       - name: Install the pinned Groovy distribution
-        if: contains(join(matrix.changed_files, ' '), '.groovy')
+        if: matrix.has_iflow_change || contains(join(matrix.changed_files, ' '), '.groovy')
         run: |
           set -uo pipefail
           curl -sSL -o "$RUNNER_TEMP/groovy.zip" \
@@ -280,34 +284,29 @@ jobs:
 
       - name: Run the Groovy harness against the real scripts
         id: groovy
-        if: contains(join(matrix.changed_files, ' '), '.groovy')
+        if: matrix.has_iflow_change || contains(join(matrix.changed_files, ' '), '.groovy')
         continue-on-error: true
         run: |
           set -o pipefail
           mkdir -p "$REPORTS_DIR"
 
-          # The directory of the scripts changed by this push, derived from the
-          # changed files (matrix.artifact_root is the directory of the `.iflw`,
-          # which is a sibling of `script/`, not a resources root). Python is used
-          # because the filenames may contain spaces: `dirname`/`xargs` would
-          # split them.
-          SCRIPT_DIR="$(python -c '
-          import sys
-          from pathlib import PurePosixPath
-          files = [f for f in sys.argv[1:] if f.endswith(".groovy")]
-          if not files:
-              sys.exit(1)
-          parts = [PurePosixPath(f).parent.parts for f in files]
-          common = [group[0] for group in zip(*parts) if len(set(group)) == 1]
-          print(PurePosixPath(*common).as_posix())
-          ' ${{ join(matrix.changed_files, ' ') }})"
+          # The script folder is derived from the artifact layout, not from the
+          # changed files. Deriving it from `changed_files` meant the harness could
+          # only run when a `.groovy` happened to have changed, and it produced an
+          # empty path when it had not. `matrix.artifact_root` is the directory of
+          # the `.iflw`; `script/` is its sibling inside the resources tree, which
+          # is why the path resolves as `<artifact_root>/../script`.
+          SCRIPT_DIR="$(cd "$SOURCE_DIR/$(dirname "${{ matrix.artifact_root }}")" && pwd)/script"
           echo "SCRIPT_DIR=$SCRIPT_DIR" >> "$GITHUB_ENV"
 
-          if [ -z "$SCRIPT_DIR" ] || [ ! -d "$SCRIPT_DIR" ]; then
-            echo "::error::Could not derive the directory of the changed .groovy scripts."
-            exit 1
+          if [ ! -d "$SCRIPT_DIR" ]; then
+            echo "::warning::No script directory at $SCRIPT_DIR: this artifact has no .groovy scripts to execute."
+            exit 0
           fi
-          export SCRIPT_DIR
+          if ! compgen -G "$SCRIPT_DIR/*.groovy" > /dev/null; then
+            echo "::notice::No .groovy script in $SCRIPT_DIR; nothing for the harness to run."
+            exit 0
+          fi
 
           # The harness requires `--testdata` to exist. When it is missing the
           # scripts cannot be executed, so say so instead of reporting a green
@@ -323,6 +322,59 @@ jobs:
             --testdata "$TESTS_DIR/testdata" \
             --junit "$REPORTS_DIR/junit-groovy.xml" \
             2>&1 | tee "$REPORTS_DIR/groovy_logs.txt"
+
+      # --- suggested fixes on failure ---------------------------------------
+      # Runs only when the suite failed, because that is when a hypothesis about
+      # what is wrong in the iFlow is worth an LLM call. The reports say what broke;
+      # this says what is probably wrong. It is advisory: the step may not fail the
+      # job, and the generated file is committed with the rest of the evidence.
+      - name: Analyse the failure and suggest fixes
+        id: suggestions
+        if: steps.pytest.outcome == 'failure'
+        continue-on-error: true
+        env:
+          PORTKEY_AUTH_TOKEN: ${{ secrets.PORTKEY_AUTH_TOKEN }}
+          PORTKEY_BASE_URL: ${{ vars.PORTKEY_BASE_URL }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+          LANGUAGE_CODE: ${{ vars.LANGUAGE_CODE || 'en_US' }}
+          AI_PROMPT_FILE: prompt/prompt_template.txt
+        run: |
+          set -uo pipefail
+          mkdir -p "$REPORTS_DIR"
+          python run.py --mode analyze-failures \
+            --source "$SOURCE_DIR" \
+            --logs "$REPORTS_DIR/pytest_logs.txt" \
+            --suggestions "$REPORTS_DIR/ai_fix_suggestions.md"
+
+      - name: Summarize the suggested fixes
+        if: steps.suggestions.outcome == 'success'
+        continue-on-error: true
+        run: |
+          {
+            echo ""
+            echo "### Suggested fixes"
+            echo ""
+            echo "Written by a model from the iFlow XML and the failure log. Treat it as a"
+            echo "hypothesis to speed up the investigation, not as a verdict."
+            echo ""
+            cat "$REPORTS_DIR/ai_fix_suggestions.md"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish the suggested fixes in the PR
+        if: steps.suggestions.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # The suggestion only has value where the developer is already looking,
+          # so it goes to the PR as well as to the evidence directory.
+          {
+            echo ""
+            echo "### Suggested fixes for \`${{ matrix.iflow }}\`"
+            echo ""
+            cat "$REPORTS_DIR/ai_fix_suggestions.md"
+          } > "${{ env.EVIDENCE_DIR }}/suggestions-${{ matrix.iflow }}.md"
+          echo "Staged ${{ matrix.iflow }} suggestions for the PR body."
 
       # --- results ----------------------------------------------------------
       # The names MUST differ: the reporter keys the Check Run by `name`, so two
@@ -372,6 +424,49 @@ jobs:
             ${{ env.TESTS_DIR }}/**
             ${{ env.PLANS_DIR }}/**
             ${{ env.SOURCE_DIR }}/${{ matrix.artifact_root }}/**
+
+      # --- commit the generated artifacts --------------------------------
+      # Without this step the pipeline is a dead end: the files are generated on
+      # the runner and only survive as an artifact, so the PR would carry no plan,
+      # no suite and no evidence, and nothing would be reviewable in Git. This runs
+      # with `always()` so the artifacts are committed even when the tests fail -
+      # a failing suite is exactly the evidence worth preserving - and with
+      # `continue-on-error` so it cannot mask the verdict applied below.
+      #
+      # The push uses the default GITHUB_TOKEN. Commits made with that token do NOT
+      # trigger new workflow runs, which is what prevents a bot -> bot loop.
+      - name: Commit the generated artifacts
+        if: always()
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+
+          git config user.name "sap-is-bot"
+          git config user.email "sap-is-bot@users.noreply.github.com"
+
+          git add -A "$TESTS_DIR" "$PLANS_DIR" "$REPORTS_DIR"
+
+          if git diff --cached --quiet; then
+            echo "Nothing new to commit for ${{ matrix.iflow }}."
+            exit 0
+          fi
+
+          git commit -m "chore(ai): test plan for ${{ matrix.iflow }} at ${{ github.sha }}"
+
+          # Several matrix jobs push to the same branch at the same time. Without
+          # the rebase a push loses the race and fails with a non-fast-forward.
+          for attempt in 1 2 3 4 5; do
+            if git push; then
+              echo "Push succeeded on attempt $attempt."
+              exit 0
+            fi
+            echo "Push rejected; rebasing and retrying ($attempt/5)..."
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
+            sleep $((attempt * 3))
+          done
+
+          echo "::warning::Could not commit the artifacts for ${{ matrix.iflow }}. The evidence is still in the artifact $ARTIFACT_NAME."
+          exit 0
 
       # `continue-on-error` above keeps the reports and the evidence even when
       # the tests fail; the verdict is applied here, after everything was
