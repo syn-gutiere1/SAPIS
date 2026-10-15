@@ -1,6 +1,1 @@
-{
-  "attachments": ["Payload"],
-  "attachment_contains": {
-    "Payload": "giic_OrderTypeCode__c"
-  }
-}
+{"attachment_contains": {"Payload": "NAO-EXISTE"}}

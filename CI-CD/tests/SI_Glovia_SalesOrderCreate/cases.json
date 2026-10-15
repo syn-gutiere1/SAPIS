@@ -1,37 +1,37 @@
 [
   {
-    "id": "TC_GLOVIA_01",
+    "id": "TC_GLOVIA_001",
     "name": "Standard Sales Order Processing (Happy Path)",
-    "trigger": "Inbound SOAP message with valid Sales Order payload satisfying Glovia_Route_SalesOrder condition",
-    "expected_outcome": "HTTP 200/202, headers (Region, Country, TimeStamp, BusinessObject, Sender) set, message routed via SequenceFlow_82 to CallActivity_102 mapping and logged via CallActivity_13, ending at EndEvent_2",
-    "validates": "Content modifier header extraction, property InputPayload retention, router condition evaluation for sales order, mapping trigger, and generic header logging"
+    "trigger": "Inbound SOAP message matching SalesOrder condition route {{Glovia_Route_SalesOrder}}",
+    "expected_outcome": "Message enriched with default headers, routed via SequenceFlow_82, transformed via Test_Mapping, processed through Generic Headers, and successfully completes at EndEvent_2",
+    "validates": "Content Modifier (CallActivity_4), ParallelGateway_74, ExclusiveGateway_80 (Route 1), Message Mapping (CallActivity_102), Generic Header Groovy script (CallActivity_13), and EndEvent_2"
   },
   {
-    "id": "TC_GLOVIA_02",
-    "name": "Sales Order Return Processing (Alternative Path)",
-    "trigger": "Inbound SOAP message satisfying Glovia_Route2_ReturnSalesOrder condition",
-    "expected_outcome": "HTTP 200/202, headers set, message routed via SequenceFlow_113 to CallActivity_71 generic headers and successfully completes at EndEvent_9",
-    "validates": "Router branching for Return Sales Order path, execution of CallActivity_71, and clean completion without invoking Order mapping"
+    "id": "TC_GLOVIA_002",
+    "name": "Sales Order Return Processing (Happy Path)",
+    "trigger": "Inbound SOAP message matching Return condition route {{Glovia_Route2_ReturnSalesOrder}}",
+    "expected_outcome": "Message enriched with default headers, routed via SequenceFlow_113, processes Generic Headers without mapping, and successfully terminates at EndEvent_9",
+    "validates": "Content Modifier (CallActivity_4), ExclusiveGateway_80 (Route 2), Generic Header Groovy script (CallActivity_71), and EndEvent_9"
   },
   {
-    "id": "TC_GLOVIA_03",
+    "id": "TC_GLOVIA_003",
     "name": "Unmatched Routing Condition - Escalation End",
-    "trigger": "Inbound SOAP message matching neither SalesOrder nor ReturnSalesOrder routing expressions",
-    "expected_outcome": "Router directs flow via default SequenceFlow_110 to EndEvent_11 raising EscalationEndEvent with ErrorCode RoutingConditionNotMet",
-    "validates": "ExclusiveGateway_80 default route handling and escalation error generation"
+    "trigger": "Inbound SOAP message where neither SalesOrder nor Return condition evaluates to true",
+    "expected_outcome": "Message routes to default path SequenceFlow_110 and terminates at EndEvent_11 with Escalation code RoutingConditionNotMet",
+    "validates": "ExclusiveGateway_80 default path handling and EndEvent_11 escalation error event trigger"
   },
   {
-    "id": "TC_GLOVIA_04",
+    "id": "TC_GLOVIA_004",
     "name": "Mapping Failure Triggers Exception Subprocess",
-    "trigger": "Inbound SOAP message routing to SalesOrder branch but containing malformed XML body causing mapping failure in CallActivity_102",
-    "expected_outcome": "SubProcess_91 catches error via StartEvent_92, CallActivity_97 restores InputPayload from property, CallActivity_100 logs original payload, and terminates at EndEvent_95 (Error End)",
-    "validates": "Exception Subprocess execution, property InputPayload restoration, payload attachment logging, and EndErrorEvent dispatch"
+    "trigger": "Inbound SOAP message on SalesOrder route containing invalid payload that triggers transformation error in CallActivity_102",
+    "expected_outcome": "Exception Subprocess 1 caught by StartEvent_92, restores payload from ${property.InputPayload} in CallActivity_97, logs payload via Log_Payload.gsh in CallActivity_100, and terminates at EndEvent_95",
+    "validates": "SubProcess_91 execution, property restoration from InputPayload, Groovy script logging attachment, and EndEvent_95 error termination"
   },
   {
-    "id": "TC_GLOVIA_05",
-    "name": "SOAP Receiver Endpoint Simulation Failure / Downstream Timeout",
-    "trigger": "Inbound request processed when downstream receiver mock responds with 500 Internal Server Error or Timeout",
-    "expected_outcome": "Exception SubProcess_91 invoked, original payload logged from property.InputPayload, error propagated to sender",
-    "validates": "System fault handling, timeout and retry isolation, and non-blocking exception logging"
+    "id": "TC_GLOVIA_005",
+    "name": "SOAP Boundary Condition - Exceeded Payload Size",
+    "trigger": "Inbound SOAP message exceeding maximumBodySize limit of 40MB configured on SOAP sender adapter",
+    "expected_outcome": "Immediate HTTP 413 or SOAP Fault rejected by CXF runtime before hitting StartEvent_2",
+    "validates": "MessageFlow_114 inbound adapter configuration limits"
   }
 ]

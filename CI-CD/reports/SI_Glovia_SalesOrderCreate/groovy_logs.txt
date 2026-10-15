@@ -1,7 +1,9 @@
-[PASS] GLOVIA_Conditioncheck_Salesorder_Create :: invalid_order_code (283 ms)
-[PASS] GLOVIA_Conditioncheck_Salesorder_Create :: valid_order_yorb (26 ms)
-[PASS] Interface_Generic_Headers :: payload (25 ms)
-[PASS] Log_Payload :: payload (24 ms)
+[PASS] GLOVIA_Conditioncheck_Salesorder_Create :: invalid_order_code (322 ms)
+[PASS] GLOVIA_Conditioncheck_Salesorder_Create :: valid_order_yorb (35 ms)
+[PASS] Interface_Generic_Headers :: payload (41 ms)
+[FAIL] Log_Payload :: payload (31 ms)
+         -> attachment 'Payload' does not contain 'NAO-EXISTE'
 
-Summary: 4 passed, 0 failed, 4 total
+Summary: 3 passed, 1 failed, 4 total
 JUnit XML: CI-CD/reports/SI_Glovia_SalesOrderCreate/junit-groovy.xml
+Failure marker written: .ci/groovy-failed (1 of 4 case(s) failed)
