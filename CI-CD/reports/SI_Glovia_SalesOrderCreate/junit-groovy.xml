@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="groovy-harness" tests="4" failures="0" errors="0" time="0.472">
+<testsuites name="groovy-harness" tests="4" failures="0" errors="0" time="0.823">
   <testsuite name="GLOVIA_Conditioncheck_Salesorder_Create.groovy" tests="2" failures="0" errors="0" time="0">
-    <testcase classname="GLOVIA_Conditioncheck_Salesorder_Create.groovy" name="GLOVIA_Conditioncheck_Salesorder_Create :: invalid_order_code" time="0.375"></testcase>
-    <testcase classname="GLOVIA_Conditioncheck_Salesorder_Create.groovy" name="GLOVIA_Conditioncheck_Salesorder_Create :: valid_order_yorb" time="0.027"></testcase>
+    <testcase classname="GLOVIA_Conditioncheck_Salesorder_Create.groovy" name="GLOVIA_Conditioncheck_Salesorder_Create :: invalid_order_code" time="0.732"></testcase>
+    <testcase classname="GLOVIA_Conditioncheck_Salesorder_Create.groovy" name="GLOVIA_Conditioncheck_Salesorder_Create :: valid_order_yorb" time="0.034"></testcase>
   </testsuite>
   <testsuite name="Interface_Generic_Headers.groovy" tests="1" failures="0" errors="0" time="0">
-    <testcase classname="Interface_Generic_Headers.groovy" name="Interface_Generic_Headers :: payload" time="0.025"></testcase>
+    <testcase classname="Interface_Generic_Headers.groovy" name="Interface_Generic_Headers :: payload" time="0.03"></testcase>
   </testsuite>
   <testsuite name="Log_Payload.gsh" tests="1" failures="0" errors="0" time="0">
-    <testcase classname="Log_Payload.gsh" name="Log_Payload :: payload" time="0.045"></testcase>
+    <testcase classname="Log_Payload.gsh" name="Log_Payload :: payload" time="0.027"></testcase>
   </testsuite>
 </testsuites>

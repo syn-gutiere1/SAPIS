@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
-  <soapenv:Header/>
   <soapenv:Body>
-    <unclosedTag>Broken XML content without termination
+    <corrupt_xml>unclosed_tag
   </soapenv:Body>
 </soapenv:Envelope>

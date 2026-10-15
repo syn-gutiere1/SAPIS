@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns1="http://soap.sforce.com/2005/09/outbound" xmlns:ns2="urn:sobject.enterprise.soap.sforce.com">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <ns1:notifications>
+      <ns1:Notification>
+        <ns1:Id>04k5g000000XYZ3AAO</ns1:Id>
+        <ns1:sObject>
+          <ns2:Id>a085g000001ABC4AAO</ns2:Id>
+          <ns2:giic_OrderTypeCode__c>INVALID_TYPE</ns2:giic_OrderTypeCode__c>
+        </ns1:sObject>
+      </ns1:Notification>
+    </ns1:notifications>
+  </soapenv:Body>
+</soapenv:Envelope>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns1="http://soap.sforce.com/2005/09/outbound" xmlns:ns2="urn:sobject.enterprise.soap.sforce.com">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <ns1:notifications>
+      <ns1:Notification>
+        <ns1:Id>04k5g000000XYZ1AAO</ns1:Id>
+        <ns1:sObject>
+          <ns2:Id>a085g000001ABC2AAO</ns2:Id>
+          <ns2:giic_OrderTypeCode__c>YORB</ns2:giic_OrderTypeCode__c>
+          <ns2:giic_OrderNumber__c>ORD-90210</ns2:giic_OrderNumber__c>
+        </ns1:sObject>
+      </ns1:Notification>
+    </ns1:notifications>
+  </soapenv:Body>
+</soapenv:Envelope>
