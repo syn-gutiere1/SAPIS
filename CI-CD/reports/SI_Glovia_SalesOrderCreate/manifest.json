@@ -19,8 +19,8 @@
     "testdata_files": 4,
     "files": [
       "cases.json",
-      "testdata/valid_sales_order.xml",
-      "testdata/valid_so_return.xml",
+      "testdata/sales_order_valid.xml",
+      "testdata/return_order_valid.xml",
       "testdata/unmatched_order.xml",
       "testdata/malformed_payload.xml",
       "test_flow.py",
@@ -36,8 +36,8 @@
     "temperature": 0.2,
     "language_code": "en_US",
     "prompt_tokens": 15333,
-    "completion_tokens": 6017,
-    "total_tokens": 21350
+    "completion_tokens": 7845,
+    "total_tokens": 23178
   },
   "prompt": {
     "file": "prompt/prompt_template.txt",
@@ -45,11 +45,11 @@
   },
   "truncated": [],
   "attempts": 1,
-  "duration_seconds": 44.002,
-  "generated_at": "2026-10-15T13:59:42Z",
+  "duration_seconds": 52.645,
+  "generated_at": "2026-10-15T14:24:41Z",
   "environment": {
-    "github_run_id": "38747306939",
-    "github_sha": "2717419425d8ca0fbfc0b3cbd0537d2187b495fc",
+    "github_run_id": "38750940012",
+    "github_sha": "fa5528c9d916b418b9965de754a8e1baacabc40e",
     "github_ref": "refs/heads/sap-is",
     "github_repository": "syn-gutiere1/SAPIS"
   }

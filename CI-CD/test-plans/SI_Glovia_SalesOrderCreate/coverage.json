@@ -1,19 +1,27 @@
 {
   "target_coverage_percent": 100,
   "coverage_by_component": {
-    "CallActivity_4 (Set Message headers)": "100%",
-    "ParallelGateway_74 (Parallel Multicast)": "100%",
-    "ExclusiveGateway_80 (Router)": "100%",
-    "SequenceFlow_82 (SalesOrder branch)": "100%",
-    "SequenceFlow_113 (SO Return branch)": "100%",
-    "SequenceFlow_110 (Default Escalation branch)": "100%",
-    "CallActivity_102 (Message Mapping 1)": "100%",
-    "CallActivity_13 & CallActivity_71 (Generic Headers)": "100%",
-    "SubProcess_91 (Exception Subprocess & Logging)": "100%",
-    "EndEvent_2, EndEvent_9, EndEvent_11, EndEvent_95": "100%"
+    "SOAP Inbound Adapter (MessageFlow_114)": "100%",
+    "Content Modifier - Header & Property Set (CallActivity_4)": "100%",
+    "Parallel Multicast Gateway (ParallelGateway_74)": "100%",
+    "Exclusive Gateway Router (ExclusiveGateway_80)": "100%",
+    "SalesOrder Route & Message Mapping (SequenceFlow_82 & CallActivity_102)": "100%",
+    "Return Order Route (SequenceFlow_113)": "100%",
+    "Default Escalation Route & End Event (SequenceFlow_110 & EndEvent_11)": "100%",
+    "Exception Subprocess & Logging (SubProcess_91, CallActivity_97, CallActivity_100, EndEvent_95)": "100%",
+    "Generic Headers Script Calls (CallActivity_13, CallActivity_71)": "100%",
+    "Orphaned Components (CallActivity_77, CallActivity_86)": "0%",
+    "CallActivity_77 (Groovy Script 2)": "0%",
+    "CallActivity_86 (Content Modifier)": "0%"
   },
-  "uncovered_paths": [],
+  "uncovered_paths": [
+    "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) has no incoming or outgoing SequenceFlow definitions in the BPMN model and cannot be executed by the runtime engine.",
+    "CallActivity_86 (Content Modifier extracting OrganizationId) is unlinked in the process diagram and is never reached by any message flow.",
+    "Unreachable in the process: CallActivity_77 (Groovy Script 2); CallActivity_86 (Content Modifier). These elements have no sequence flow connecting them to the flow, so no test can exercise them."
+  ],
   "coverage_recommendations": [
-    "Incorporate unreferenced standalone elements (CallActivity_86 Content Modifier and CallActivity_77 Groovy Script 2) into the active BPMN sequence flow or clean up the artifact repository to prevent deployment ambiguity."
+    "Insert CallActivity_86 and CallActivity_77 sequentially between CallActivity_4 and ParallelGateway_74 so that OrganizationId is extracted and OrderCodeValid header is set prior to routing.",
+    "Update ExclusiveGateway_80 condition expressions to evaluate the header ${header.OrderCodeValid} = 'true' instead of relying solely on unmapped externalized properties.",
+    "Add automated CI pipeline assertions ensuring that any BPMN artifact without at least one incoming and one outgoing SequenceFlow fails the static integration linter."
   ]
 }

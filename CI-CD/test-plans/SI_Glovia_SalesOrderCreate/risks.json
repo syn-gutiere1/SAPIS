@@ -1,22 +1,22 @@
 [
   {
-    "risk": "Payload loss during runtime exception handling",
-    "consequence": "If transformation fails midway in CallActivity_102, downstream monitoring cannot access the raw payload unless explicitly cached.",
-    "mitigation": "CallActivity_4 sets property InputPayload before routing; CallActivity_97 enriches the body from ${property.InputPayload} and logs it as an attachment in CallActivity_100."
+    "risk": "Orphaned Groovy Script and Content Modifier steps (CallActivity_77 and CallActivity_86) not connected to BPMN sequence flow",
+    "consequence": "Critical business logic for order code validation (YORB, YICB, POR, MNZ, PLM) and OrganizationId header extraction is completely bypassed during runtime, allowing invalid order types to proceed.",
+    "mitigation": "Unit tests assert exact route execution paths and confirm missing validation logic. Recommendations provide explicit BPMN connectivity adjustments before deploying to QA/Prod."
   },
   {
-    "risk": "Message dropped silently when routing conditions are not met",
-    "consequence": "Sales order or return requests with unexpected OrderTypeCodes will be lost without alerting operations.",
-    "mitigation": "ExclusiveGateway_80 defines default SequenceFlow_110 directing unmatched messages to EscalationEndEvent EndEvent_11 with ErrorCode RoutingConditionNotMet."
+    "risk": "Message loss due to One-Way SOAP Message Exchange Pattern (MEP) with returnExceptionToSender=false",
+    "consequence": "Calling systems receive an HTTP 202 Ack before downstream errors or Escalation End (RoutingConditionNotMet) events occur, resulting in silent failures without sender awareness.",
+    "mitigation": "Automated unit test TC_GLOVIA_003 and TC_GLOVIA_004 assert error state transitions and verify that the Exception Subprocess logs the payload attachment to MPL for monitoring visibility."
   },
   {
-    "risk": "Groovy XmlSlurper namespace evaluation failure on runtime updates",
-    "consequence": "Updating runtime to Groovy 4 can cause XmlSlurper parsing to fail or misinterpret qualified tags.",
-    "mitigation": "Script GLOVIA_Conditioncheck_Salesorder_Create.groovy explicitly imports groovy.xml.XmlSlurper and accesses nodes by local name rather than hardcoded prefixes."
+    "risk": "Uninitialized / Unbound externalized parameters in gateway condition expressions ({{Glovia_Route_SalesOrder}} and {{Glovia_Route2_ReturnSalesOrder}})",
+    "consequence": "If tenant configurations lack parameter definitions, condition expressions evaluate to false or cause XPath parsing syntax errors, causing valid messages to land in Escalation End.",
+    "mitigation": "Test suite explicitly validates boundary evaluation of routing parameters and confirms default path behavior when conditions evaluate to false."
   },
   {
-    "risk": "Null pointer in Interface_Generic_Headers script",
-    "consequence": "Missing headers like Region or Sender could cause unhandled exceptions during logging.",
-    "mitigation": "The script enforces explicit null checks prior to invoking messageLog.addCustomHeaderProperty for all headers."
+    "risk": "Payload tampering or loss during exception handling in SubProcess_91",
+    "consequence": "If an error occurs before CallActivity_4 initializes ${in.body} into property.InputPayload, CallActivity_97 overwrites the message body with null, leaving no debug payload for Log_Payload.gsh.",
+    "mitigation": "Unit test TC_GLOVIA_004 validates that property.InputPayload is safely preserved and restored as an attachment in the error subprocess."
   }
 ]

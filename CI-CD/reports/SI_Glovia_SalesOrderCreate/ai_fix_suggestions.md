@@ -1,42 +1,88 @@
 # Suggested fixes — SI_Glovia_SalesOrderCreate
 
-Generated for commit `2717419425d8` from the failure log.
+Generated for commit `fa5528c9d916` from the failure log.
 
 > Written by a model from the iFlow XML and its scripts. It is a hypothesis to speed up the investigation, not a verdict: check it against the artifact before changing anything.
 
 ---
 
-### Analysis of Test Results and Layer Identification
+### Analysis of Test Failures and Component Layers
 
-An inspection of the test logs reveals that **no tests have failed**:
+1. **Pytest Suite (`pytest_logs.txt`)**:
+   - **Result**: 5 passed, 0 failed.
+   - **Layer**: Generated Python Simulation Tests.
+   - **Status**: Clean.
 
-1. **Python / Pytest Simulation Suite (`pytest_logs.txt`)**:
-   - `5 passed in 0.20s` (All 5 scenarios: standard sales order, sales order return, unmatched routing escalation, mapping/parsing failure, downstream connection timeout passed).
-2. **Groovy In-Process Test Harness (`groovy_logs.txt`)**:
-   - `4 passed, 0 failed, 4 total` (All fixtures for `GLOVIA_Conditioncheck_Salesorder_Create`, `Interface_Generic_Headers`, and `Log_Payload` passed).
-
-**Layer Judgement:**
-- **iFlow & Groovy Scripts:** No defect detected. All script executions and flow paths behave as expected.
-- **Generated Tests & Harness:** Functioning properly with zero assertion errors or compilation issues.
-
-Because all test suites completed successfully and no failures occurred, no modifications or speculative edits are required for the SAP iFlow XML or Groovy scripts.
+2. **Groovy Test Suite (`groovy_logs.txt`)**:
+   - **Failure**: `[FAIL] Log_Payload :: payload (31 ms) -> attachment 'Payload' does not contain 'NAO-EXISTE'`.
+   - **Layer**: Test Fixture (`CI-CD/groovy-fixtures/Log_Payload/payload.assert.json` or equivalent test assertion).
+   - **Analysis**:
+     Examining `script/Log_Payload.gsh`:
+     ```groovy
+     def Message processData(Message message) {
+         def body = message.getBody(java.lang.String) as String;
+         def messageLog = messageLogFactory.getMessageLog(message);
+         messageLog.addAttachmentAsString("Payload", body, "text/plain");
+         return message;
+     }
+     ```
+     The script simply extracts the incoming body as a string and attaches it to the MPL under the name `"Payload"`.
+     The assertion fails because the test fixture asserts that the attachment contains the dummy string `'NAO-EXISTE'` (Portuguese for "DOES-NOT-EXIST"). This is an erroneous test assertion/dummy fixture artifact within the Groovy test suite fixture, not a defect in `Log_Payload.gsh` or the iFlow artifact.
+   - **Proposed Action**: No code changes to `Log_Payload.gsh` or the BPMN XML for this failure. Update or correct the fixture assertion for `Log_Payload :: payload` so that it expects real payload content matching the injected test case rather than `'NAO-EXISTE'`.
 
 ---
 
 ## Fix Risks
 
-### 1. Payload loss during runtime exception handling
-- **Status:** **Already covered by current design.**
-- **Details:** The flow caches the incoming payload into exchange property `InputPayload` early in processing (`CallActivity_4`). If an unhandled exception or mapping failure occurs, `SubProcess_91` (Exception Subprocess 1) catches the error, `CallActivity_97` (`Read the payload from property`) restores the body using expression `${property.InputPayload}`, and `CallActivity_100` (`Log Payload`, executing `Log_Payload.gsh`) attaches the raw payload to the Message Processing Log (MPL) via `messageLog.addAttachmentAsString` before `EndEvent_95` terminates the execution.
+### 1. Orphaned Groovy Script and Content Modifier steps (`CallActivity_77` and `CallActivity_86`) not connected to BPMN sequence flow
+* **Risk & Consequence**: Business logic for order code validation (`GLOVIA_Conditioncheck_Salesorder_Create.groovy`) and `OrganizationId` header extraction is completely disconnected from the sequence flow, allowing unvalidated order codes to proceed.
+* **Fix in iFlow XML**: 
+  - Wire `CallActivity_86` and `CallActivity_77` sequentially into the main process sequence flow between the initial Content Modifier (`CallActivity_4`) and the Parallel Multicast Gateway (`ParallelGateway_74`).
+  - Delete direct incoming flow to `ParallelGateway_74` originating from `CallActivity_4`.
+  - Connect `CallActivity_4` $\rightarrow$ `CallActivity_86` via sequence flow.
+  - Connect `CallActivity_86` $\rightarrow$ `CallActivity_77` via sequence flow.
+  - Connect `CallActivity_77` $\rightarrow$ `ParallelGateway_74` via sequence flow.
+  - In `ExclusiveGateway_80`, update routing conditions to evaluate `${header.OrderCodeValid} = 'true'` alongside the route conditions.
 
-### 2. Message dropped silently when routing conditions are not met
-- **Status:** **Already covered by current design.**
-- **Details:** The routing gateway (`ExclusiveGateway_80`) directs orders that do not match the expected `OrderTypeCode` or return conditions to the default path `SequenceFlow_110`. This path terminates in `EndEvent_11` (Escalation End Event) configured with `ErrorCode: RoutingConditionNotMet`, ensuring the message is escalated in SAP Cloud Integration monitoring rather than silently consumed.
+### 2. Message loss due to One-Way SOAP Message Exchange Pattern (MEP) with `returnExceptionToSender=false`
+* **Risk & Consequence**: The sender receives an immediate HTTP 202 Ack upon message acceptance. Any downstream routing error (e.g., `EscalationEndEvent` `EndEvent_11`) or unhandled processing exception produces silent failures with no sender notification.
+* **Fix / Mitigation**: 
+  - In Collaboration properties, change `returnExceptionToSender` from `false` to `true` if the sender system supports fault contracts.
+  - If the sender interface requires an asynchronous one-way contract (`messageExchangePattern = OneWay`), mitigate this at the iFlow design level by:
+    1. Retaining `SubProcess_91` error handling and logging via `Log_Payload.gsh` with custom MPL status and alerts.
+    2. Modifying `EndEvent_11` (`EscalationEndEvent`) to route unroutable messages to an error alert queue/dead-letter topic or notifying operations via an alert channel, rather than silently completing.
 
-### 3. Groovy XmlSlurper namespace evaluation failure on runtime updates
-- **Status:** **Already covered by current design.**
-- **Details:** In `script/GLOVIA_Conditioncheck_Salesorder_Create.groovy`, Groovy 4 runtime compatibility is addressed by explicitly importing `groovy.xml.XmlSlurper`. In addition, payload traversal navigates elements by local XML element names (`xml.Body.notifications.Notification.sObject.giic_OrderTypeCode__c.text()`) rather than relying on dynamic or hardcoded namespace prefixes (e.g., `SOAP:`, `ns1:`, `ns2:`), preventing parsing and resolution errors across runtime versions.
+### 3. Uninitialized / Unbound externalized parameters in gateway condition expressions (`{{Glovia_Route_SalesOrder}}` and `{{Glovia_Route2_ReturnSalesOrder}}`)
+* **Risk & Consequence**: If tenant configurations lack parameter definitions, condition expressions evaluate to false or raise syntax parsing errors, routing all traffic to `EndEvent_11`.
+* **Fix in iFlow**:
+  - In `src/main/resources/parameters.propdef` and the flow configuration (`configurations.prop`), define explicit default boolean or regex fallback values (e.g., `Glovia_Route_SalesOrder = true`, `Glovia_Route2_ReturnSalesOrder = true`).
+  - In `ExclusiveGateway_80`, ensure standard Apache Camel simple expression guards are used rather than raw unvalidated placeholders, or configure explicit default branch routing to handle unmatched scenarios gracefully.
 
-### 4. Null pointer in Interface_Generic_Headers script
-- **Status:** **Already covered by current design.**
-- **Details:** In `script/Interface_Generic_Headers.groovy`, the script verifies `messageLog != null` and safely fetches all headers (`Country`, `Region`, `BusinessObject`, `Sender`, `Receiver`, and `TimeStamp`) using `message.getHeaders().get(...)`. Each header is wrapped in an explicit `if (header != null)` guard prior to executing `messageLog.addCustomHeaderProperty(...)`, avoiding `NullPointerException`s when headers are absent.
+### 4. Payload tampering or loss during exception handling in `SubProcess_91`
+* **Risk & Consequence**: If an unhandled exception occurs prior to `CallActivity_4` storing `${in.body}` into `property.InputPayload`, `CallActivity_97` (`Read the payload from property`) replaces the body with `${property.InputPayload}` (which evaluates to null/empty), wiping out error context before `Log_Payload.gsh` runs.
+* **Fix in iFlow**:
+  - In `CallActivity_4`, ensure initial property setting runs as step 1 immediately after `StartEvent_2`.
+  - In `CallActivity_97`, mitigate body loss by using a fallback expression in `wrapContent`: `${property.InputPayload != null ? property.InputPayload : in.body}` or configure an initial Groovy script/enricher that checks whether `property.InputPayload` is set before replacing `${in.body}`.
+
+---
+
+## Fix Coverage
+
+### Uncovered Components (Below 100%)
+* **`CallActivity_77 (Groovy Script 2)` - Coverage: 0%**
+* **`CallActivity_86 (Content Modifier)` - Coverage: 0%**
+
+### Uncovered Paths & Remediation
+
+1. **Path: `CallActivity_77` (GLOVIA_Conditioncheck_Salesorder_Create.groovy) and `CallActivity_86` (Content Modifier extracting OrganizationId)**
+   - **Root Cause**: Both elements are orphaned in the BPMN model with zero incoming or outgoing sequence flows (`<bpmn2:incoming>` and `<bpmn2:outgoing>` missing).
+   - **Fix**:
+     - Do not delete these elements as they contain critical validation logic (`GLOVIA_Conditioncheck_Salesorder_Create.groovy` and header extraction for `OrganizationId`).
+     - Wire them into the active execution path of `Process_1`:
+       1. Add `bpmn2:sequenceFlow` from `CallActivity_4` to `CallActivity_86`.
+       2. Add `bpmn2:sequenceFlow` from `CallActivity_86` to `CallActivity_77`.
+       3. Add `bpmn2:sequenceFlow` from `CallActivity_77` to `ParallelGateway_74`.
+     - Once connected, add unit tests in `CI-CD/tests/SI_Glovia_SalesOrderCreate/test_flow.py` covering:
+       - Payload with valid order codes (`YORB`, `YICB`, `POR`, `MNZ`, `PLM`) exercising `CallActivity_77` setting `OrderCodeValid = true`.
+       - Payload with invalid order codes (e.g., `INVALID`) asserting that `OrderCodeValid = false` routes to the default/escalation branch.
+       - Message payload containing `OrganizationId` ensuring `CallActivity_86` sets the target header.
