@@ -330,14 +330,16 @@ jobs:
             exit 0
           fi
 
-          # The harness reads `testdata/groovy`, NOT `testdata`. The two hold
-          # different things: `testdata/` is the model's payload library for the
-          # pytest suite, while `testdata/groovy/` holds the reviewed fixtures with
-          # their `.assert.json` assertions. Pointing the harness at `testdata/`
-          # made it execute the generated payloads, which carry no assertions, so
-          # every case reported Pass by default and the job looked green while the
-          # real scripts were only smoke-tested.
-          GROOVY_TESTDATA="$TESTS_DIR/testdata/groovy"
+          # The reviewed fixtures live in CI-CD/groovy-fixtures/<iFlow>, deliberately
+          # OUTSIDE the `--out` tree. The writer wipes its output directory before
+          # rewriting - that is what stops stale fixtures from altering a result - so
+          # fixtures kept under `tests/<iFlow>/testdata/groovy` were deleted by the
+          # very generation step that precedes the harness. The harness then found an
+          # empty directory, executed the model's payloads instead (which carry no
+          # assertions, so every case "passed"), and the job went green against
+          # nothing. Keeping them outside the generated tree is what makes the
+          # harness meaningful.
+          GROOVY_TESTDATA="CI-CD/groovy-fixtures/${{ matrix.iflow }}"
           if [ ! -d "$GROOVY_TESTDATA" ]; then
             echo "::error::No reviewed fixtures at $GROOVY_TESTDATA. The Groovy scripts cannot be validated; commit the fixtures, or run the harness locally with --snapshot-missing and review the result."
             exit 1

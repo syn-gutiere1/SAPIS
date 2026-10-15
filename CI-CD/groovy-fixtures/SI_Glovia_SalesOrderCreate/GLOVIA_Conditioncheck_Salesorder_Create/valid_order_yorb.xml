@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Valid SOAP payload for the Glovia SalesOrderCreate flow.
+
+  Carries a recognised order type code (YORB), so the condition script must set
+  OrderCodeValid = true. This fixture is the evidence that the real script is
+  broken: see CI-CD/tests/SI_Glovia_SalesOrderCreate/testdata/groovy/README.md.
+-->
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:ns1="http://soap.sforce.com/2005/09/outbound"
+               xmlns:ns2="urn:sobject.enterprise.soap.sforce.com">
+  <SOAP:Header/>
+  <SOAP:Body>
+    <ns1:notifications>
+      <ns1:OrganizationId>00D000000000001</ns1:OrganizationId>
+      <ns1:ActionId>04k000000000001</ns1:ActionId>
+      <ns1:Notification>
+        <ns1:Id>04l000000000001</ns1:Id>
+        <ns1:sObject xsi:type="ns2:Order__c" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+          <ns2:Id>801000000000001</ns2:Id>
+          <ns2:giic_OrderTypeCode__c>YORB</ns2:giic_OrderTypeCode__c>
+          <ns2:Name>SO-2024-001</ns2:Name>
+          <ns2:giic_CustomerAccount__c>ACC-001</ns2:giic_CustomerAccount__c>
+          <ns2:giic_OrderDate__c>2024-01-15</ns2:giic_OrderDate__c>
+          <ns2:CurrencyIsoCode>USD</ns2:CurrencyIsoCode>
+        </ns1:sObject>
+      </ns1:Notification>
+    </ns1:notifications>
+  </SOAP:Body>
+</SOAP:Envelope>

@@ -563,7 +563,7 @@ def test_snapshot_after_review_passes(tmp_path: Path):
 REAL_IFLOW = REPO / "CI-CD" / "iflows" / "SI_Glovia_SalesOrderCreate"
 REAL_SCRIPTS = REAL_IFLOW / "src" / "main" / "resources" / "script"
 REAL_FIXTURES = (
-    REPO / "CI-CD" / "tests" / "SI_Glovia_SalesOrderCreate" / "testdata" / "groovy"
+    REPO / "CI-CD" / "groovy-fixtures" / "SI_Glovia_SalesOrderCreate"
 )
 
 

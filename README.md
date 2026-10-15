@@ -84,7 +84,7 @@ CI-CD/
 ```
 
 Until a suite has been generated, `CI-CD/tests/<iFlowName>/` holds only the
-hand-written `testdata/groovy/` fixtures; `CI-CD/test-plans/` and `CI-CD/reports/`
+hand-written fixtures in `CI-CD/groovy-fixtures/`; `CI-CD/test-plans/` and `CI-CD/reports/`
 appear on the first run.
 
 ---
@@ -358,10 +358,10 @@ CI uses `--require-fixtures` instead. A snapshot created on the runner would nev
 committed, so the next run would repeat the same warning; with `--require-fixtures` the
 job fails and lists the scripts that still have no reviewed fixture.
 
-The fixtures in `CI-CD/tests/SI_Glovia_SalesOrderCreate/testdata/groovy/` are hand-written
+The fixtures in `CI-CD/groovy-fixtures/SI_Glovia_SalesOrderCreate/` are hand-written
 and describe the behaviour the flow is *supposed* to have. They need no change when the
 script is fixed: the job turns green on its own. See
-[the fixtures README](CI-CD/tests/SI_Glovia_SalesOrderCreate/testdata/groovy/README.md)
+[the fixtures README](CI-CD/groovy-fixtures/SI_Glovia_SalesOrderCreate/README.md)
 for the namespace defect in detail.
 
 ---
@@ -563,7 +563,7 @@ above is what remains of that groundwork, and it is not referenced by either wor
   `tests/test_groovy_harness.py::test_scan_all_on_the_real_artifact_reports_the_defect`;
   the latter asserts the defect is still present, so it will start failing when the iFlow
   is fixed. That failure is the signal to invert the reviewed fixtures. See
-  [the fixtures README](CI-CD/tests/SI_Glovia_SalesOrderCreate/testdata/groovy/README.md).
+  [the fixtures README](CI-CD/groovy-fixtures/SI_Glovia_SalesOrderCreate/README.md).
 
 - **Truncation dropped a third of the flow, silently.** A fixed 30 000-character limit
   against a 45 225-character real flow; the truncated run produced 6 scenarios instead of
