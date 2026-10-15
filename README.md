@@ -298,10 +298,12 @@ groovy -cp stubs groovy-harness/TestHarness.groovy \
 ```
 
 > **Run the harness with Groovy 4.** The pinned distribution is `4.0.24`, matching the
-> Groovy 4 runtime. Under Groovy 3 the condition script compiles and the harness reports
-> the namespace defect; under Groovy 4 it does not compile at all, which is the more
-> serious finding and the one that blocks the runtime upgrade. Checking with Groovy 3
-> therefore hides a real defect. Both findings are in Known findings.
+> Groovy 4 runtime. This is not a detail: when the condition script was still broken it
+> failed differently under each version. Groovy 3 compiled it and reported the namespace
+> defect; Groovy 4 refused to compile it at all, which was the more serious finding and
+> the one that blocked the runtime upgrade. A local check with Groovy 3 hid it. Both are
+> fixed now, and the reason to stay on Groovy 4 is that it is the runtime the iFlow is
+> deployed to. See Known findings.
 
 The fixtures argument points at `CI-CD/groovy-fixtures/<iFlowName>`, never at the
 generated `tests/<iFlowName>/testdata` tree. The writer wipes its output directory on
@@ -365,17 +367,18 @@ snapshot awaiting human review: confirm the observed values and remove the
 
 This is deliberate. A snapshot describes what the script *does*, not what it *should do*.
 Without the lock, a real defect would be frozen as an expectation and the test would pass
-forever -- which is very close to what happened with the namespace defect below.
+forever -- which is very close to what happened with the namespace defect recorded in
+Known findings.
 
 CI uses `--require-fixtures` instead. A snapshot created on the runner would never be
 committed, so the next run would repeat the same warning; with `--require-fixtures` the
 job fails and lists the scripts that still have no reviewed fixture.
 
 The fixtures in `CI-CD/groovy-fixtures/SI_Glovia_SalesOrderCreate/` are hand-written
-and describe the behaviour the flow is *supposed* to have. They need no change when the
-script is fixed: the job turns green on its own. See
+and describe the behaviour the flow is *supposed* to have. They needed no change when the
+script was fixed: the job turned green on its own. See
 [the fixtures README](CI-CD/groovy-fixtures/SI_Glovia_SalesOrderCreate/README.md)
-for the namespace defect in detail.
+for the two defects they exposed.
 
 ---
 
@@ -562,43 +565,44 @@ above is what remains of that groundwork, and it is not referenced by either wor
 
 ## Known findings
 
-- **The condition script does not compile on Groovy 4.** Line 5 of
-  `GLOVIA_Conditioncheck_Salesorder_Create.groovy` calls `new XmlSlurper()` with no
-  import. On Groovy 3 that resolves through the implicit `groovy.util` import and the
-  script compiles; on Groovy 4 `groovy.util.XmlSlurper` is no longer auto-imported and
-  the script fails to compile:
+- **Two defects in the Glovia condition script -- found and FIXED.** They are kept
+  here because the way they were found is the argument for the harness, and because
+  the tests that guard them will fail if either returns.
+
+  **1. The script did not compile on Groovy 4.** `new XmlSlurper()` was called with
+  no import. On Groovy 3 that resolved through the implicit `groovy.util` import; on
+  Groovy 4 it is no longer auto-imported, so the script raised:
 
   ```text
   unable to resolve class XmlSlurper
    @ line 5, column 15.
   ```
 
-  Consequences: on a Groovy 4 runtime the whole script raises, so no order is validated
-  at all, and the script blocks the iFlow from the Groovy 4 upgrade. SAP documents the
-  incompatibility and the fix: `import groovy.util.XmlSlurper` is incompatible with the
-  Groovy 4 runtime and should become `import groovy.xml.XmlSlurper`
+  On the deployment runtime the whole script raised, so no order was validated, and
+  the script blocked the iFlow from the Groovy 4 upgrade. SAP documents the same
+  incompatibility and the same fix, `import groovy.xml.XmlSlurper`
   ([SAP: Use Import Statements Supported by the Script Runtime](https://github.com/SAP-docs/btp-integration-suite/blob/main/docs/ci/Development/use-import-statements-supported-by-the-script-runtime-13fee7f.md)).
 
-  **The harness must therefore run Groovy 4**, which is what `GROOVY_VERSION: "4.0.24"`
-  in the workflow pins. A local Groovy 3 does not reproduce this and reports the
-  lower-level namespace defect instead: the two are different failures with different
-  fixes, and only Groovy 4 shows both. See the Groovy harness section.
+  **2. Navigation by namespace prefix never matched.** The script read
+  `xml.'ns1:notifications'.'ns1:Notification'....`. `XmlSlurper` discards prefixes
+  when exposing element names -- `xml.name()` returns `Envelope`, not
+  `SOAP:Envelope` -- even with `namespaceAware = true`. Those accessors returned
+  nothing, the order code came back as `""`, and the valid-code list never contains
+  `""`: **every** order was marked invalid, including the valid `YORB` one. The fix
+  navigates by local name:
+  `xml.Body.notifications.Notification.sObject.giic_OrderTypeCode__c.text()`.
 
-- **Namespace defect in the Glovia condition script.**
-  `GLOVIA_Conditioncheck_Salesorder_Create.groovy` navigates with namespace-prefixed
-  accessors (`xml.'ns1:notifications'.'ns1:Notification'....`). `XmlSlurper` discards the
-  prefixes when exposing element names -- `xml.name()` returns `Envelope`, not
-  `SOAP:Envelope` -- even with `namespaceAware = true`. Those accessors return nothing, the
-  extracted order code is `""`, and the valid-code list never contains `""`. Consequence:
-  the script marks **every** order as invalid (`OrderCodeValid = false`), including valid
-  codes such as `YORB`. The correct navigation uses the local names
-  (`xml.Body.notifications.Notification.sObject.giic_OrderTypeCode__c.text()`). The
-  harness detects it, and the tests that pin it are
+  Both are corrected in the artifact. Guarding them:
   `tests/test_groovy_harness.py::test_harness_detects_script_with_namespace_bug` and
-  `tests/test_groovy_harness.py::test_scan_all_on_the_real_artifact_reports_the_defect`;
-  the latter asserts the defect is still present, so it will start failing when the iFlow
-  is fixed. That failure is the signal to invert the reviewed fixtures. See
+  `tests/test_groovy_harness.py::test_scan_all_on_the_real_artifact_passes`, the
+  latter asserting the whole script directory is green. See
   [the fixtures README](CI-CD/groovy-fixtures/SI_Glovia_SalesOrderCreate/README.md).
+
+  **Why the harness has to run Groovy 4.** `GROOVY_VERSION: "4.0.24"` is pinned in the
+  workflow for this reason. Under Groovy 3 the namespace defect is what you see, and
+  the compilation defect is invisible; only Groovy 4 shows both, and it is the one
+  that blocks the runtime upgrade. Checking locally with Groovy 3 hides a real
+  defect. See the Groovy harness section.
 
 - **Truncation dropped a third of the flow, silently.** A fixed 30 000-character limit
   against a 45 225-character real flow; the truncated run produced 6 scenarios instead of

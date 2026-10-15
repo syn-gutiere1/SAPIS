@@ -570,21 +570,30 @@ REAL_FIXTURES = (
 @pytest.mark.skipif(
     not REAL_SCRIPTS.is_dir(), reason="the real Glovia artifact is not present"
 )
-def test_scan_all_on_the_real_artifact_reports_the_defect():
+def test_scan_all_on_the_real_artifact_passes():
     """
-    The real condition script marks a YORB order as invalid.
+    The real condition script, executed against the reviewed fixtures, is green.
 
-    This test documents a DEFECT in the artifact, not in the harness. When the
-    script is fixed in the iFlow, this test starts failing - which is intended:
-    it is the signal that the fix arrived and the fixtures should be inverted.
+    This test guards the fix of two defects that used to live in the artifact:
+
+      - `new XmlSlurper()` with no import, which does not compile on the Groovy 4
+        runtime the iFlow is deployed to;
+      - navigation by namespace prefix (`xml.'ns1:notifications'...`), which
+        `XmlSlurper` can never match because it discards prefixes. Every order was
+        therefore marked invalid, including the valid `YORB` one.
+
+    It asserts the whole script directory is green rather than a single header
+    value, so it also covers the second script. If either defect comes back the
+    harness reports a failure here, which is the point.
     """
     if not REAL_FIXTURES.is_dir():
         pytest.skip(f"no reviewed fixtures at {REAL_FIXTURES}")
 
     result = _run_scan(REAL_SCRIPTS, REAL_FIXTURES)
 
-    assert result.returncode == 1, (
-        "the namespace defect may have been fixed in the iFlow: "
-        "invert the reviewed fixtures and update the README"
+    assert result.returncode == 0, (
+        "the real condition script is not green against the reviewed fixtures:\n"
+        f"{result.stdout}"
     )
-    assert "got 'false'" in result.stdout
+    assert "0 failed" in result.stdout
+    assert "FAIL" not in result.stdout
