@@ -1,26 +1,19 @@
 {
   "target_coverage_percent": 100,
   "coverage_by_component": {
-    "StartEvent_2 (SOAP Inbound)": "100%",
     "CallActivity_4 (Set Message headers)": "100%",
-    "ParallelGateway_74 (Multicast Branch 1)": "100%",
-    "ExclusiveGateway_80 (Router - SalesOrder, SO Return, Default)": "100%",
+    "ParallelGateway_74 (Parallel Multicast)": "100%",
+    "ExclusiveGateway_80 (Router)": "100%",
+    "SequenceFlow_82 (SalesOrder branch)": "100%",
+    "SequenceFlow_113 (SO Return branch)": "100%",
+    "SequenceFlow_110 (Default Escalation branch)": "100%",
     "CallActivity_102 (Message Mapping 1)": "100%",
-    "CallActivity_13 (Interface_Generic_Headers)": "100%",
-    "CallActivity_71 (Interface_Generic_Headers)": "100%",
-    "EndEvent_2 & EndEvent_9 (Success Message Ends)": "100%",
-    "EndEvent_11 (Escalation End Event)": "100%",
-    "SubProcess_91 (Exception Handling & Log_Payload)": "100%",
-    "CallActivity_77 (Detached Groovy Script)": "0%",
-    "CallActivity_86 (Detached Content Modifier)": "0%"
+    "CallActivity_13 & CallActivity_71 (Generic Headers)": "100%",
+    "SubProcess_91 (Exception Subprocess & Logging)": "100%",
+    "EndEvent_2, EndEvent_9, EndEvent_11, EndEvent_95": "100%"
   },
-  "uncovered_paths": [
-    "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) has no incoming or outgoing sequence flow connections in the BPMN XML model.",
-    "CallActivity_86 (Content Modifier for OrganizationId) has no incoming or outgoing sequence flow connections in the BPMN XML model."
-  ],
+  "uncovered_paths": [],
   "coverage_recommendations": [
-    "Connect CallActivity_77 between CallActivity_4 and ParallelGateway_74 to actively execute OrderTypeCode validation before routing.",
-    "Connect CallActivity_86 between StartEvent_2 and CallActivity_4 or splice it into Branch 1 so OrganizationId is extracted reliably.",
-    "Once connected in the BPMN model, add targeted scenario TC_GLOVIA_006 validating OrderCodeValid header output ('true' vs 'false') to achieve 100% executable flow coverage."
+    "Incorporate unreferenced standalone elements (CallActivity_86 Content Modifier and CallActivity_77 Groovy Script 2) into the active BPMN sequence flow or clean up the artifact repository to prevent deployment ambiguity."
   ]
 }

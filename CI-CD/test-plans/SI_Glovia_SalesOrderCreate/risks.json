@@ -1,22 +1,22 @@
 [
   {
-    "risk": "Detached Groovy Script CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy)",
-    "consequence": "The script contains validation logic for OrderTypeCode (valid codes: YORB, YICB, POR, MNZ, PLM) setting header 'OrderCodeValid', but it has no sequence flows connected in the BPMN. Route decisions may bypass order validation completely, leading to invalid data reaching downstream endpoints.",
-    "mitigation": "Unit tests assert order code validity independently and confirm routing behavior across both supported codes and fallback escalation until CallActivity_77 is spliced into the process pipeline."
+    "risk": "Payload loss during runtime exception handling",
+    "consequence": "If transformation fails midway in CallActivity_102, downstream monitoring cannot access the raw payload unless explicitly cached.",
+    "mitigation": "CallActivity_4 sets property InputPayload before routing; CallActivity_97 enriches the body from ${property.InputPayload} and logs it as an attachment in CallActivity_100."
   },
   {
-    "risk": "Detached Content Modifier CallActivity_86",
-    "consequence": "The step intended to extract header 'OrganizationId' via XPath '/ns1:notifications/ns1:Notification/ns1:sObject/ns2:giic_OrderTypeCode__c' is disconnected from SequenceFlows, resulting in downstream consumers missing this header.",
-    "mitigation": "Integration test verifies that downstream mapping and header enrichment steps do not critically rely on OrganizationId or that default fallbacks are configured."
+    "risk": "Message dropped silently when routing conditions are not met",
+    "consequence": "Sales order or return requests with unexpected OrderTypeCodes will be lost without alerting operations.",
+    "mitigation": "ExclusiveGateway_80 defines default SequenceFlow_110 directing unmatched messages to EscalationEndEvent EndEvent_11 with ErrorCode RoutingConditionNotMet."
   },
   {
-    "risk": "High Memory Footprint from ${in.body} in InputPayload Property",
-    "consequence": "CallActivity_4 copies the entire incoming payload to property 'InputPayload'. With a configured maximumBodySize of 40MB, high concurrent traffic can exhaust JVM heap space and cause OutOfMemory errors.",
-    "mitigation": "Exception subprocess recovery tests confirm that InputPayload is only accessed on failure, and volume testing should enforce lower stream sizes or use message archiving."
+    "risk": "Groovy XmlSlurper namespace evaluation failure on runtime updates",
+    "consequence": "Updating runtime to Groovy 4 can cause XmlSlurper parsing to fail or misinterpret qualified tags.",
+    "mitigation": "Script GLOVIA_Conditioncheck_Salesorder_Create.groovy explicitly imports groovy.xml.XmlSlurper and accesses nodes by local name rather than hardcoded prefixes."
   },
   {
-    "risk": "Asynchronous Escalation End Event Masking",
-    "consequence": "The inbound adapter is configured as OneWay SOAP (cxfRobust). When EndEvent_11 executes with 'RoutingConditionNotMet', the sender receives an HTTP 202 without an error fault, hiding routing failures from Glovia.",
-    "mitigation": "Automated unit tests validate header assertions and verify that Cloud Integration logs an MPL escalation state even when the external response is fire-and-forget."
+    "risk": "Null pointer in Interface_Generic_Headers script",
+    "consequence": "Missing headers like Region or Sender could cause unhandled exceptions during logging.",
+    "mitigation": "The script enforces explicit null checks prior to invoking messageLog.addCustomHeaderProperty for all headers."
   }
 ]
