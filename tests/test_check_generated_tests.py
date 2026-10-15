@@ -402,3 +402,144 @@ response = requests.post("https://cpi.example.invalid/x", timeout=5)
     findings = checker.check(_write(tmp_path, content))
 
     assert any(f.category == "network" for f in findings)
+
+
+# ---------------------------------------------------------------------------
+# SOAP Fault namespace
+# ---------------------------------------------------------------------------
+
+REAL_FAULT_LOOKUP = '''
+import xml.etree.ElementTree as ET
+
+ENV = "{http://schemas.xmlsoap.org/soap/envelope/}"
+
+
+def test_escalation(unmatched_order_xml):
+    response = ET.fromstring("<SOAP:Envelope/>")
+    fault_string = response.find(f".//{ENV}faultstring")
+    assert fault_string is not None
+'''
+
+CORRECT_FAULT_LOOKUP = '''
+import xml.etree.ElementTree as ET
+
+ENV = "{http://schemas.xmlsoap.org/soap/envelope/}"
+
+
+def test_escalation(unmatched_order_xml):
+    response = ET.fromstring("<SOAP:Envelope/>")
+    fault = response.find(f".//{ENV}Fault")
+    assert fault is not None
+    fault_string = fault.find("faultstring")
+    assert fault_string is not None
+    assert "Escalation" in fault_string.text
+'''
+
+
+def test_flags_envelope_namespace_on_faultstring(tmp_path: Path):
+    """
+    The defect that failed every generated suite: `Fault` is in the envelope namespace but
+    `faultstring` is not, so qualifying it always resolves to None. The mock was correct;
+    the assertion was wrong.
+    """
+    findings = checker.check(_write(tmp_path, REAL_FAULT_LOOKUP))
+
+    soap = [f for f in findings if f.category == "soap-namespace"]
+    assert soap, "a qualified faultstring must be flagged"
+    assert "faultstring" in soap[0].detail
+
+
+def test_flags_the_inline_uri_too(tmp_path: Path):
+    content = '''
+import xml.etree.ElementTree as ET
+
+
+def test_fault():
+    root = ET.fromstring("<xml/>")
+    assert root.find(".//{http://schemas.xmlsoap.org/soap/envelope/}faultcode") is not None
+'''
+    findings = checker.check(_write(tmp_path, content))
+
+    assert any(f.category == "soap-namespace" for f in findings)
+
+
+def test_accepts_the_correct_fault_navigation(tmp_path: Path):
+    """`Fault` qualified, its children not: this is the shape the prompt asks for."""
+    findings = checker.check(_write(tmp_path, CORRECT_FAULT_LOOKUP))
+
+    assert not any(f.category == "soap-namespace" for f in findings)
+
+
+def test_accepts_a_business_namespace_on_a_child(tmp_path: Path):
+    """A payload namespace is not the SOAP envelope, whatever it qualifies."""
+    content = '''
+import xml.etree.ElementTree as ET
+
+NS = "{http://soap.sforce.com/2005/09/outbound}"
+
+
+def test_payload():
+    root = ET.fromstring("<xml/>")
+    assert root.find(f".//{NS}notifications") is not None
+'''
+    findings = checker.check(_write(tmp_path, content))
+
+    assert not any(f.category == "soap-namespace" for f in findings)
+
+
+def test_accepts_soap_12_qualified_reason_and_detail(tmp_path: Path):
+    """
+    SOAP 1.2 is the opposite of 1.1: `Code`, `Reason` and `Detail` ARE in the envelope
+    namespace, so qualifying them is correct. My first probe expected this to be flagged and
+    the probe was wrong, not the rule.
+    """
+    content = '''
+import xml.etree.ElementTree as ET
+
+ENV12 = "{http://www.w3.org/2003/05/soap-envelope}"
+
+
+def test_fault_12():
+    root = ET.fromstring("<xml/>")
+    assert root.find(f".//{ENV12}Reason") is not None
+    assert root.find(f".//{ENV12}Detail") is not None
+    assert root.find(f".//{ENV12}Fault") is not None
+'''
+    findings = checker.check(_write(tmp_path, content))
+
+    assert not any(f.category == "soap-namespace" for f in findings)
+
+
+def test_accepts_qualified_envelope_and_body(tmp_path: Path):
+    """`Envelope` and `Body` ARE qualified in SOAP 1.1; only the Fault children are not."""
+    content = '''
+import xml.etree.ElementTree as ET
+
+ENV = "{http://schemas.xmlsoap.org/soap/envelope/}"
+
+
+def test_structure():
+    root = ET.fromstring("<xml/>")
+    assert root.find(f".//{ENV}Body") is not None
+    assert root.find(f".//{ENV}Envelope") is not None
+'''
+    findings = checker.check(_write(tmp_path, content))
+
+    assert not any(f.category == "soap-namespace" for f in findings)
+
+
+def test_accepts_iterating_over_the_fault_children(tmp_path: Path):
+    content = '''
+import xml.etree.ElementTree as ET
+
+ENV = "{http://schemas.xmlsoap.org/soap/envelope/}"
+
+
+def test_fault():
+    root = ET.fromstring("<xml/>")
+    fault = root.find(f".//{ENV}Fault")
+    assert "faultstring" in [child.tag for child in fault]
+'''
+    findings = checker.check(_write(tmp_path, content))
+
+    assert not any(f.category == "soap-namespace" for f in findings)
