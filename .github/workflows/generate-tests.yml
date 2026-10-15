@@ -330,18 +330,23 @@ jobs:
             exit 0
           fi
 
-          # The harness requires `--testdata` to exist. When it is missing the
-          # scripts cannot be executed, so say so instead of reporting a green
-          # result for something that never ran.
-          if [ ! -d "$TESTS_DIR/testdata" ]; then
-            mkdir -p "$TESTS_DIR/testdata"
-            echo "::warning::No fixtures in $TESTS_DIR/testdata: the scripts are not validated. Run the harness locally with --snapshot-missing and review the .assert.json."
+          # The harness reads `testdata/groovy`, NOT `testdata`. The two hold
+          # different things: `testdata/` is the model's payload library for the
+          # pytest suite, while `testdata/groovy/` holds the reviewed fixtures with
+          # their `.assert.json` assertions. Pointing the harness at `testdata/`
+          # made it execute the generated payloads, which carry no assertions, so
+          # every case reported Pass by default and the job looked green while the
+          # real scripts were only smoke-tested.
+          GROOVY_TESTDATA="$TESTS_DIR/testdata/groovy"
+          if [ ! -d "$GROOVY_TESTDATA" ]; then
+            echo "::error::No reviewed fixtures at $GROOVY_TESTDATA. The Groovy scripts cannot be validated; commit the fixtures, or run the harness locally with --snapshot-missing and review the result."
+            exit 1
           fi
 
           echo "Scripts: $SCRIPT_DIR"
           groovy -cp stubs groovy-harness/TestHarness.groovy \
             --scan-all "$SCRIPT_DIR" \
-            --testdata "$TESTS_DIR/testdata" \
+            --testdata "$GROOVY_TESTDATA" \
             --junit "$REPORTS_DIR/junit-groovy.xml" \
             2>&1 | tee "$REPORTS_DIR/groovy_logs.txt"
 
