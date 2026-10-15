@@ -271,12 +271,15 @@ jobs:
             2>&1 | tee "$REPORTS_DIR/pytest_logs.txt"
 
       # --- real Groovy scripts ----------------------------------------------
-      # Gated on the artifact having changed at all, not only on a `.groovy`
-      # change. A change to the `.iflw` can alter the flow behaviour, so the real
-      # scripts must run then too; gating only on `.groovy` silently skipped the
-      # harness on exactly the change that matters most.
+      # Gated on the artifact having changed at all. A change to the `.iflw` can alter
+      # the flow behaviour, so the real scripts must run then too; gating only on
+      # `.groovy` silently skipped the harness on exactly the change that matters most.
+      #
+      # The second half matches any file under `/script/` rather than a `.groovy`
+      # suffix, because a script may also be a `.gsh`. Matching the suffix would skip
+      # the harness for a push that changes only `Log_Payload (1).gsh`.
       - name: Install JDK 17
-        if: matrix.has_iflow_change || contains(join(matrix.changed_files, ' '), '.groovy')
+        if: matrix.has_iflow_change || contains(join(matrix.changed_files, ' '), '/script/')
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -286,7 +289,7 @@ jobs:
       # the stubs and the script on demand. `groovyc` would also be a trap on
       # Windows, where it is a batch file.
       - name: Install the pinned Groovy distribution
-        if: matrix.has_iflow_change || contains(join(matrix.changed_files, ' '), '.groovy')
+        if: matrix.has_iflow_change || contains(join(matrix.changed_files, ' '), '/script/')
         run: |
           set -uo pipefail
           curl -sSL -o "$RUNNER_TEMP/groovy.zip" \
@@ -297,7 +300,7 @@ jobs:
 
       - name: Run the Groovy harness against the real scripts
         id: groovy
-        if: matrix.has_iflow_change || contains(join(matrix.changed_files, ' '), '.groovy')
+        if: matrix.has_iflow_change || contains(join(matrix.changed_files, ' '), '/script/')
         continue-on-error: true
         run: |
           set -o pipefail

@@ -311,13 +311,20 @@ every run, so fixtures kept there are deleted before the harness can read them.
 
 | Flag | Meaning |
 |---|---|
-| `--script <file.groovy>` | run one script |
-| `--scan-all <dir>` | run every `.groovy` in a directory (one JUnit `testsuite` each) |
+| `--script <file>` | run one script (`.groovy` or `.gsh`) |
+| `--scan-all <dir>` | run every `.groovy` and `.gsh` in a directory (one JUnit `testsuite` each) |
 | `--testdata <dir>` | fixtures root (required) |
 | `--junit <file>` | write a JUnit report for `dorny/test-reporter` |
 | `--filter <substring>` | run only the fixtures whose name contains the substring |
 | `--snapshot-missing` | write an assertion file from the observed behaviour |
 | `--require-fixtures` | fail when a script has no reviewed fixture |
+
+Both extensions are executed because SAP CPI uses either one for a Groovy script.
+Scanning only `.groovy` left `Log_Payload (1).gsh` - a script the `.iflw` actually
+calls - with no coverage, which is the same class of blindness the harness exists to
+remove. A fixture folder is named after the script with anything outside
+`[A-Za-z0-9._-]` replaced by `_`, so that script maps to `Log_Payload__1_`; the
+harness prints the folder to create when one is missing.
 
 Exit codes: `0` all passed, `1` some failure or a pending fixture, `2` invalid usage.
 

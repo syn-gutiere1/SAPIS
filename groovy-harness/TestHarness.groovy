@@ -16,17 +16,27 @@
  *          [--junit  <junit-groovy.xml>] \
  *          [--filter <substring>]
  *
+ * Both `.groovy` and `.gsh` are executed: SAP CPI uses either extension for a Groovy
+ * script. Scanning only `.groovy` left a production script named
+ * `Log_Payload (1).gsh` with no coverage at all.
+ *
+ * Fixtures live in a folder per script, named after the script without its extension
+ * and sanitised to [A-Za-z0-9._-]: `Log_Payload (1).gsh` -> `Log_Payload__1_`. When a
+ * script has no fixtures the harness prints the folder name to create.
+ *
  * File convention in --testdata:
  *
- *   <name>.xml              input payload (required)
- *   <name>.inject.json      optional: initial headers/properties
- *                           {"headers": {...}, "properties": {...}}
- *   <name>.assert.json      optional: checks after the run
- *                           {
- *                             "headers":       {"OrderCodeValid": "true"},
- *                             "body_contains": ["YORB"],
- *                             "log_headers":   {"Country": "US"}
- *                           }
+ *   <case>.xml             input payload (required)
+ *   <case>.inject.json     optional: initial headers/properties
+ *                          {"headers": {...}, "properties": {...}}
+ *   <case>.assert.json     optional: checks after the run
+ *                          {
+ *                            "headers":             {"OrderCodeValid": "true"},
+ *                            "body_contains":       ["YORB"],
+ *                            "log_headers":         {"Country": "US"},
+ *                            "attachments":         ["Payload"],
+ *                            "attachment_contains": {"Payload": "YORB"}
+ *                          }
  *
  * Without an assertion file, the test only confirms that the script runs
  * without throwing an exception.
@@ -83,17 +93,59 @@ Map parseArgs(String[] argv) {
 }
 
 /**
+ * Extensions this harness executes.
+ *
+ * SAP CPI keeps Groovy scripts in the artifact as `.groovy` or `.gsh`, and both are
+ * the same language with the same runtime contract. Scanning only `.groovy` left a
+ * real production script (`Log_Payload (1).gsh`, referenced by the `.iflw`) with no
+ * coverage at all - the same class of blindness this harness exists to remove.
+ *
+ * Declared inside the method rather than as a static field: a static method in a
+ * Groovy script cannot see a static field of the script class.
+ */
+static List<String> scriptExtensions() {
+    return ['.groovy', '.gsh']
+}
+
+/** True when the file is a script this harness can execute. */
+static boolean isScriptFile(File file) {
+    if (!file.isFile()) return false
+    def lower = file.name.toLowerCase()
+    return scriptExtensions().any { lower.endsWith(it) }
+}
+
+/** The script name without its extension: `Log_Payload (1).gsh` -> `Log_Payload (1)`. */
+static String scriptBaseName(File scriptFile) {
+    def name = scriptFile.name
+    def dot = name.lastIndexOf('.')
+    return dot > 0 ? name.substring(0, dot) : name
+}
+
+/**
+ * The fixture directory name for a script.
+ *
+ * The base name alone is not safe: a real artifact contains `Log_Payload (1).gsh`,
+ * and a directory with spaces and parentheses is awkward to pass around and to match.
+ * Anything outside `[A-Za-z0-9._-]` becomes `_`, so that script maps to
+ * `Log_Payload__1_`. The mapping is deterministic, so the name to create is never a
+ * guess.
+ */
+static String fixtureDirName(File scriptFile) {
+    scriptBaseName(scriptFile).replaceAll(/[^A-Za-z0-9._-]/, '_')
+}
+
+/**
  * Fixtures for one script.
  *
  * Convention: if a subdirectory of `testdata/` exists with the script name
- * (without the extension), it takes priority. This lets each script have its own
- * fixtures, instead of every script consuming the same flat directory.
+ * (without the extension, sanitised), it takes priority. This lets each script have
+ * its own fixtures, instead of every script consuming the same flat directory.
  *
  *   testdata/<ScriptName>/<case>.xml
  *   testdata/<case>.xml                 (fallback, flat layout)
  */
 File fixturesDirFor(File testdataDir, File scriptFile) {
-    def dedicated = new File(testdataDir, scriptFile.name.replaceFirst(/\.groovy$/, ''))
+    def dedicated = new File(testdataDir, fixtureDirName(scriptFile))
     return dedicated.isDirectory() ? dedicated : testdataDir
 }
 
@@ -158,7 +210,7 @@ if (args.scanAll) {
         System.exit(2)
     }
     scripts = dir.listFiles()
-            .findAll { it.isFile() && it.name.endsWith('.groovy') }
+            .findAll { isScriptFile(it) }
             .sort { it.name }
 } else {
     def scriptFile = new File(args.script as String)
@@ -170,7 +222,7 @@ if (args.scanAll) {
 }
 
 if (scripts.isEmpty()) {
-    println '::warning::No .groovy script found.'
+    println "::warning::No script found (looked for ${scriptExtensions().join(', ')})."
 }
 
 // --- execution -------------------------------------------------------------
@@ -183,22 +235,12 @@ def pending = []
 
 scripts.each { scriptFile ->
 
+    // `fixturesDirFor` always returns an existing directory: it falls back to
+    // `--testdata` itself, which is validated before this loop. So "the directory is
+    // missing" cannot happen here - the real case is "there is no payload for this
+    // script", handled below. The sanitised folder name belongs in that message,
+    // because `Log_Payload (1).gsh` maps to `Log_Payload__1_` and is not guessable.
     def fixturesDir = fixturesDirFor(testdataDir, scriptFile)
-
-    if (!fixturesDir.isDirectory()) {
-        def warning = "No fixtures directory for ${scriptFile.name}: ${fixturesDir}"
-        if (args.requireFixtures) {
-            // In CI it makes no sense to create a snapshot: the file would be born
-            // on the runner and would never be committed, so the next run would
-            // repeat everything. Here we require that the fixtures were created
-            // and reviewed locally.
-            println "::error::${warning}. Run the harness locally with --snapshot-missing and version the fixtures."
-            pending << warning
-            return
-        }
-        println "::warning::${warning}"
-        return
-    }
 
     // Payloads are included; the assertion and injection sidecars are not.
     def fixtures = fixturesDir.listFiles()
@@ -211,9 +253,15 @@ scripts.each { scriptFile ->
     }
 
     if (fixtures.isEmpty()) {
-        def warning = "No fixture for ${scriptFile.name} in ${fixturesDir}"
+        // In CI it makes no sense to create a snapshot: the file would be born on the
+        // runner and would never be committed, so the next run would repeat
+        // everything. `--require-fixtures` therefore demands that the fixtures were
+        // created and reviewed locally.
+        def folder = fixtureDirName(scriptFile)
+        def warning = "No fixture for ${scriptFile.name} in ${fixturesDir} " +
+                "(expected a folder named '${folder}')"
         if (args.requireFixtures) {
-            println "::error::${warning}"
+            println "::error::${warning}. Run the harness locally with --snapshot-missing and version the fixtures."
             pending << warning
             return
         }
@@ -226,7 +274,7 @@ scripts.each { scriptFile ->
     fixtures.each { fixture ->
 
         def baseName = fixture.name.replaceFirst(/\.[^.]+$/, '')
-        def testName = "${scriptFile.name.replaceFirst(/\.groovy$/, '')} :: ${baseName}".toString()
+        def testName = "${fixtureDirName(scriptFile)} :: ${baseName}".toString()
 
         def assertFile = new File(fixturesDir, "${baseName}.assert.json")
         def injectFile = new File(fixturesDir, "${baseName}.inject.json")
@@ -291,6 +339,9 @@ scripts.each { scriptFile ->
             if (logRecord && !logRecord.getCustomHeaderPropertyMap().isEmpty()) {
                 snapshot.log_headers = logRecord.getCustomHeaderPropertyMap()
             }
+            if (logRecord && !logRecord.getAttachments().isEmpty()) {
+                snapshot.attachments = logRecord.getAttachments()
+            }
             assertFile.setText(
                     groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(snapshot)), 'UTF-8')
             snapshotsCreated = snapshotsCreated + 1
@@ -324,6 +375,32 @@ scripts.each { scriptFile ->
                 expectations.log_headers.each { key, expected ->
                     if (recordedMap[key as String]?.toString() != expected?.toString()) {
                         failures << "log '${key}': expected '${expected}', got '${recordedMap[key as String]}'"
+                    }
+                }
+            }
+
+            // Attachments written through the MessageLog stub. A script such as
+            // `Log_Payload (1).gsh` exists only to attach the payload, so without this
+            // the only thing checked about it would be that it did not throw.
+            if (expectations.attachments) {
+                def recorded = logFactory.getRecordedLog()
+                def actual = recorded ? recorded.getAttachments() : []
+                expectations.attachments.each { expected ->
+                    if (!actual.contains(expected as String)) {
+                        failures << "attachment '${expected}' was not added (added: ${actual})"
+                    }
+                }
+            }
+
+            if (expectations.attachment_contains) {
+                def recorded = logFactory.getRecordedLog()
+                def contents = recorded ? recorded.getAttachmentContent() : [:]
+                expectations.attachment_contains.each { name, snippet ->
+                    def content = contents[name as String]
+                    if (content == null) {
+                        failures << "attachment '${name}' has no recorded content"
+                    } else if (!content.contains(snippet as String)) {
+                        failures << "attachment '${name}' does not contain '${snippet}'"
                     }
                 }
             }

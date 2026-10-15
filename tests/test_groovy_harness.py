@@ -572,28 +572,100 @@ REAL_FIXTURES = (
 )
 def test_scan_all_on_the_real_artifact_passes():
     """
-    The real condition script, executed against the reviewed fixtures, is green.
+    Every real script of the artifact is executed and green.
 
-    This test guards the fix of two defects that used to live in the artifact:
+    This test guards three things that went wrong in this repository:
 
       - `new XmlSlurper()` with no import, which does not compile on the Groovy 4
         runtime the iFlow is deployed to;
       - navigation by namespace prefix (`xml.'ns1:notifications'...`), which
-        `XmlSlurper` can never match because it discards prefixes. Every order was
-        therefore marked invalid, including the valid `YORB` one.
+        `XmlSlurper` can never match because it discards prefixes, so every order
+        was marked invalid including the valid `YORB` one;
+      - `Log_Payload (1).gsh` not being executed at all, because the scan only
+        looked for `.groovy`. SAP CPI uses `.gsh` too, and this script is
+        referenced by the `.iflw`.
 
-    It asserts the whole script directory is green rather than a single header
-    value, so it also covers the second script. If either defect comes back the
-    harness reports a failure here, which is the point.
+    The set of scripts is asserted, not only the verdict. Without that, a script
+    silently dropping out of the scan would keep this test green - the exact
+    failure mode it exists to catch.
     """
     if not REAL_FIXTURES.is_dir():
         pytest.skip(f"no reviewed fixtures at {REAL_FIXTURES}")
 
+    expected = sorted(
+        p.stem.replace(" ", "_").replace("(", "_").replace(")", "_")
+        for p in REAL_SCRIPTS.iterdir()
+        if p.suffix.lower() in (".groovy", ".gsh")
+    )
+    if not expected:
+        pytest.skip(f"no scripts at {REAL_SCRIPTS}")
+
     result = _run_scan(REAL_SCRIPTS, REAL_FIXTURES)
 
     assert result.returncode == 0, (
-        "the real condition script is not green against the reviewed fixtures:\n"
+        "a real script is not green against the reviewed fixtures:\n"
         f"{result.stdout}"
     )
     assert "0 failed" in result.stdout
     assert "FAIL" not in result.stdout
+    for stem in expected:
+        assert stem in result.stdout, f"{stem} was not executed:\n{result.stdout}"
+
+
+# ---------------------------------------------------------------------------
+# Script extensions and fixture folder names
+# ---------------------------------------------------------------------------
+
+
+def _plain_script() -> str:
+    return (
+        "import com.sap.gateway.ip.core.customdev.util.Message\n"
+        "def Message processData(Message message) { return message }\n"
+    )
+
+
+def test_gsh_scripts_are_scanned(tmp_path: Path):
+    """
+    `.gsh` is the other extension SAP CPI uses for a Groovy script, and it was not
+    scanned. A production script named `Log_Payload (1).gsh` therefore had no
+    coverage at all.
+    """
+    scripts = tmp_path / "script"
+    scripts.mkdir()
+    (scripts / "One.groovy").write_text(_plain_script(), encoding="utf-8")
+    (scripts / "Two.gsh").write_text(_plain_script(), encoding="utf-8")
+    (scripts / "notes.txt").write_text("not a script", encoding="utf-8")
+
+    testdata = tmp_path / "testdata"
+    for name in ("One", "Two"):
+        (testdata / name).mkdir(parents=True)
+        (testdata / name / "case.xml").write_text("<x/>", encoding="utf-8")
+
+    result = _run_scan(scripts, testdata)
+
+    assert "One :: case" in result.stdout
+    assert "Two :: case" in result.stdout, f".gsh was not scanned:\n{result.stdout}"
+    assert "notes.txt" not in result.stdout
+    assert "2 passed, 0 failed, 2 total" in result.stdout
+
+
+def test_fixture_folder_for_an_awkward_name_is_reported(tmp_path: Path):
+    """
+    A real script is called `Log_Payload (1).gsh`. Its fixture folder cannot carry
+    spaces and parentheses, so the name is sanitised - and the harness prints the
+    name to create, because it is not guessable.
+    """
+    scripts = tmp_path / "script"
+    scripts.mkdir()
+    (scripts / "Log_Payload (1).gsh").write_text(_plain_script(), encoding="utf-8")
+
+    # `--testdata` must exist (the harness validates it), but it holds no fixture for
+    # this script, so the flat fallback finds nothing and the message must say which
+    # folder to create.
+    testdata = tmp_path / "testdata"
+    testdata.mkdir()
+
+    result = _run_scan(scripts, testdata, "--require-fixtures")
+
+    assert "Log_Payload__1_" in result.stdout
+    assert "expected a folder named" in result.stdout
