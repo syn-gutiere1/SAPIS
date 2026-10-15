@@ -23,6 +23,20 @@ Timer or IDoc is polled or scheduled by the tenant and has no webhook to call. I
 that case this script reports `has_http_trigger: false` so the caller can skip the
 smoke test with an honest message instead of inventing a URL.
 
+Externalized parameters are a second, subtler case. SAP lets a value be written as
+`{{Parameter}}` and supplied by the tenant at deploy time. Such a value is NOT part
+of the artifact, so it cannot be derived either - and returning it as if it were the
+path produces a URL like `https://tenant.invalid{{Glovia_Address}}`, which nothing
+can call. When a placeholder survives in the path or in the component type, the
+script reports:
+
+    "unresolved_parameters": ["Glovia_Address"],
+    "listener_path": null
+
+so the caller configures the value instead of requesting a nonsense URL. Resolving
+`{{Parameter}}` against the tenant is deliberately out of scope: the value lives in
+the tenant, not in the artifact, and inventing one would be worse than reporting it.
+
 Output (stdout, JSON):
 
     {"has_http_trigger": true, "component_type": "SOAP", "path": "/Glovia_SalesOrder",
@@ -30,7 +44,9 @@ Output (stdout, JSON):
 
 Exit codes:
     0  the artifact was read (even when there is no HTTP trigger)
-    2  the artifact could not be read, or no sender is declared
+    1  `--fail-if-no-trigger` and the flow has no HTTP trigger
+    2  the artifact could not be read, no sender is declared, or a parameter is still
+       externalized so no usable path exists
 """
 
 from __future__ import annotations
@@ -38,6 +54,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import re
 from pathlib import Path
 
 # Adapter component types that expose an HTTP listener and can therefore be
@@ -61,6 +78,10 @@ PATH_KEYS = ("urlPath", "address", "endpointAddress")
 # Property keys that identify the sender adapter block.
 SENDER_MARKERS = ("EndpointSender", "Sender")
 
+# SAP externalization: `{{ParameterName}}`. The value is supplied by the tenant at deploy
+# time, so it never appears in the artifact and cannot be derived from it.
+EXTERNALIZED_PATTERN = re.compile(r"\{\{\s*([A-Za-z0-9_.\-]+)\s*\}\}")
+
 
 class DeriveError(Exception):
     """The artifact could not be read or declares no usable sender."""
@@ -76,8 +97,6 @@ def _parse_properties(xml_text: str) -> list[tuple[str, str]]:
     changes. The trade-off is documented: this reads properties, it does not
     validate the document.
     """
-    import re
-
     pattern = re.compile(
         r"<key>\s*([^<]+?)\s*</key>\s*<value>\s*([^<]*?)\s*</value>",
         re.DOTALL,
@@ -132,7 +151,27 @@ def derive(iflw_path: Path) -> dict:
         if path:
             break
 
-    has_trigger = component_type.upper() in HTTP_COMPONENT_TYPES and bool(path)
+    # A parameter that survived as `{{...}}` is a value the tenant owns, not a path. It must
+    # not be handed to a caller as if it could be requested.
+    unresolved = list(
+        dict.fromkeys(
+            EXTERNALIZED_PATTERN.findall(f"{path or ''} {component_type}")
+        )
+    )
+
+    # The component type may itself be externalized, in which case whether this flow has an
+    # HTTP trigger is unknown rather than false: it depends on the value the tenant supplies.
+    type_is_known = (
+        bool(component_type) and not EXTERNALIZED_PATTERN.search(component_type)
+    )
+    path_is_usable = bool(path) and not EXTERNALIZED_PATTERN.search(path)
+
+    if unresolved:
+        has_trigger = None if not type_is_known else (
+            path_is_usable and component_type.upper() in HTTP_COMPONENT_TYPES
+        )
+    else:
+        has_trigger = component_type.upper() in HTTP_COMPONENT_TYPES and path_is_usable
 
     return {
         "iflow": iflw_path.stem,
@@ -141,6 +180,7 @@ def derive(iflw_path: Path) -> dict:
         "transport_protocol": transport or None,
         "path": path,
         "listener_path": path if has_trigger else None,
+        "unresolved_parameters": unresolved,
         "sender_auth_type": _first_property(properties, "senderAuthType"),
         "required_role": _first_property(properties, "userRole"),
     }
@@ -184,7 +224,18 @@ def main(argv: list[str] | None = None) -> int:
 
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
-    if not result["has_http_trigger"]:
+    if result["unresolved_parameters"]:
+        nomes = ", ".join(result["unresolved_parameters"])
+        print(
+            f"[ERROR] {result['iflow']} leaves {nomes} externalized, so the listener "
+            "path cannot be derived from the artifact. Supply the value from the tenant "
+            "configuration before calling this flow; a URL built from the placeholder "
+            "would not resolve.",
+            file=sys.stderr,
+        )
+        return 2
+
+    if result["has_http_trigger"] is not True:
         print(
             f"[WARNING] {result['iflow']} declares no HTTP trigger "
             f"(component type: {result['component_type'] or 'unknown'}). "

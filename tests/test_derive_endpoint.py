@@ -245,3 +245,136 @@ def test_derives_the_real_glovia_trigger():
     assert result["component_type"] == "SOAP"
     assert result["listener_path"] == "/Glovia_SalesOrder"
     assert result["required_role"] == "ESBMessaging.send"
+
+
+# ---------------------------------------------------------------------------
+# Externalized parameters
+# ---------------------------------------------------------------------------
+
+EXTERNALIZED_ADDRESS_SENDER = [
+    ("ComponentType", "SOAP"),
+    ("address", "{{Glovia_Address}}"),
+    ("TransportProtocol", "HTTP"),
+]
+
+EXTERNALIZED_TYPE_SENDER = [
+    ("ComponentType", "{{Glovia_Protocol}}"),
+    ("address", "/Glovia_SalesOrder"),
+    ("TransportProtocol", "HTTP"),
+]
+
+PARTIALLY_EXTERNALIZED_PATH_SENDER = [
+    ("ComponentType", "REST"),
+    ("urlPath", "/{{Glovia_Version}}/orders"),
+    ("TransportProtocol", "HTTPS"),
+]
+
+EXTERNALIZED_AUTH_SENDER = [
+    ("ComponentType", "SOAP"),
+    ("address", "/Glovia_SalesOrder"),
+    ("TransportProtocol", "HTTP"),
+    ("senderAuthType", "{{Glovia_AuthType}}"),
+]
+
+
+def test_externalized_address_yields_no_usable_path(tmp_path: Path):
+    """
+    The defect: `{{Glovia_Address}}` was returned as the listener path, so a caller building
+    `host + path` produced `https://tenant.invalid{{Glovia_Address}}`. The value lives in
+    the tenant, not in the artifact, so it cannot be derived - and must not be pretended.
+    """
+    artifact = _artifact(tmp_path, "ExternalAddress", EXTERNALIZED_ADDRESS_SENDER)
+
+    result = derive_endpoint.derive(artifact)
+
+    assert result["listener_path"] is None
+    assert result["has_http_trigger"] is not True
+    assert result["unresolved_parameters"] == ["Glovia_Address"]
+    # The raw value is still reported, for the message that names the parameter.
+    assert result["path"] == "{{Glovia_Address}}"
+
+
+def test_externalized_parameter_inside_a_longer_path_is_caught(tmp_path: Path):
+    """A placeholder in the middle of a path is just as unusable as a whole-value one."""
+    artifact = _artifact(tmp_path, "PartialPath", PARTIALLY_EXTERNALIZED_PATH_SENDER)
+
+    result = derive_endpoint.derive(artifact)
+
+    assert result["listener_path"] is None
+    assert result["unresolved_parameters"] == ["Glovia_Version"]
+
+
+def test_externalized_component_type_reports_unknown_not_absent(tmp_path: Path):
+    """
+    An externalized `ComponentType` is a flow whose trigger depends on the tenant value. It
+    was read as the literal `{{Glovia_Protocol}}`, matched no HTTP type, and was reported as
+    "this flow declares no HTTP trigger" - the opposite of the truth, and silently.
+    """
+    artifact = _artifact(tmp_path, "ExternalType", EXTERNALIZED_TYPE_SENDER)
+
+    result = derive_endpoint.derive(artifact)
+
+    assert result["has_http_trigger"] is None
+    assert result["listener_path"] is None
+    assert result["unresolved_parameters"] == ["Glovia_Protocol"]
+
+
+def test_several_parameters_are_all_reported_once_each(tmp_path: Path):
+    artifact = _artifact(
+        tmp_path,
+        "TwoParams",
+        [
+            ("ComponentType", "SOAP"),
+            ("address", "/{{Glovia_Tenant}}/{{Glovia_Service}}"),
+            ("TransportProtocol", "HTTP"),
+        ],
+    )
+
+    result = derive_endpoint.derive(artifact)
+
+    assert result["unresolved_parameters"] == ["Glovia_Tenant", "Glovia_Service"]
+
+
+def test_an_externalized_value_that_is_not_the_path_is_not_a_finding(tmp_path: Path):
+    """
+    `senderAuthType` externalized does not affect whether the endpoint can be called, so the
+    path stays usable. Reporting it would be noise.
+    """
+    artifact = _artifact(tmp_path, "ExternalAuth", EXTERNALIZED_AUTH_SENDER)
+
+    result = derive_endpoint.derive(artifact)
+
+    assert result["unresolved_parameters"] == []
+    assert result["listener_path"] == "/Glovia_SalesOrder"
+    assert result["has_http_trigger"] is True
+
+
+def test_a_literal_path_has_no_unresolved_parameters(tmp_path: Path):
+    artifact = _artifact(tmp_path, "LiteralSoap", SOAP_SENDER)
+
+    result = derive_endpoint.derive(artifact)
+
+    assert result["unresolved_parameters"] == []
+    assert result["listener_path"] == "/Glovia_SalesOrder"
+
+
+def test_cli_fails_when_a_parameter_is_unresolved(tmp_path: Path):
+    """Exit 2, not 0: no usable URL exists, so a caller must not proceed."""
+    _artifact(tmp_path, "ExternalAddress", EXTERNALIZED_ADDRESS_SENDER)
+
+    result = _run(str(tmp_path))
+
+    assert result.returncode == 2
+    assert "Glovia_Address" in result.stderr
+    assert "externalized" in result.stderr
+
+
+def test_cli_does_not_warn_about_a_missing_trigger_when_the_type_is_unknown(tmp_path: Path):
+    """The message must not claim the flow has no trigger when that is unknown."""
+    _artifact(tmp_path, "ExternalType", EXTERNALIZED_TYPE_SENDER)
+
+    result = _run(str(tmp_path))
+
+    assert result.returncode == 2
+    assert "declares no HTTP trigger" not in result.stderr
+    assert "Glovia_Protocol" in result.stderr
