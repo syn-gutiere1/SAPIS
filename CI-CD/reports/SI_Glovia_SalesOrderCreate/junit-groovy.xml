@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="groovy-harness" tests="8" failures="4" errors="0" time="0.188">
-  <testsuite name="GLOVIA_Conditioncheck_Salesorder_Create.groovy" tests="4" failures="4" errors="0" time="0">
-    <testcase classname="GLOVIA_Conditioncheck_Salesorder_Create.groovy" name="GLOVIA_Conditioncheck_Salesorder_Create :: sales_order_malformed" time="0.056"><failure message="MultipleCompilationErrorsException: startup failed:
+<testsuites name="groovy-harness" tests="3" failures="2" errors="0" time="0.119">
+  <testsuite name="GLOVIA_Conditioncheck_Salesorder_Create.groovy" tests="2" failures="2" errors="0" time="0">
+    <testcase classname="GLOVIA_Conditioncheck_Salesorder_Create.groovy" name="GLOVIA_Conditioncheck_Salesorder_Create :: invalid_order_code" time="0.042"><failure message="MultipleCompilationErrorsException: startup failed:
 /home/runner/work/SAPIS/SAPIS/CI-CD/iflows/SI_Glovia_SalesOrderCreate/src/main/resources/script/GLOVIA_Conditioncheck_Salesorder_Create.groovy: 5: unable to resolve class XmlSlurper
  @ line 5, column 15.
        def xml = new XmlSlurper().parseText(body)
@@ -16,37 +16,7 @@
 
 1 error
 </failure></testcase>
-    <testcase classname="GLOVIA_Conditioncheck_Salesorder_Create.groovy" name="GLOVIA_Conditioncheck_Salesorder_Create :: sales_order_return" time="0.011"><failure message="MultipleCompilationErrorsException: startup failed:
-/home/runner/work/SAPIS/SAPIS/CI-CD/iflows/SI_Glovia_SalesOrderCreate/src/main/resources/script/GLOVIA_Conditioncheck_Salesorder_Create.groovy: 5: unable to resolve class XmlSlurper
- @ line 5, column 15.
-       def xml = new XmlSlurper().parseText(body)
-                 ^
-
-1 error
-">MultipleCompilationErrorsException: startup failed:
-/home/runner/work/SAPIS/SAPIS/CI-CD/iflows/SI_Glovia_SalesOrderCreate/src/main/resources/script/GLOVIA_Conditioncheck_Salesorder_Create.groovy: 5: unable to resolve class XmlSlurper
- @ line 5, column 15.
-       def xml = new XmlSlurper().parseText(body)
-                 ^
-
-1 error
-</failure></testcase>
-    <testcase classname="GLOVIA_Conditioncheck_Salesorder_Create.groovy" name="GLOVIA_Conditioncheck_Salesorder_Create :: sales_order_standard" time="0.01"><failure message="MultipleCompilationErrorsException: startup failed:
-/home/runner/work/SAPIS/SAPIS/CI-CD/iflows/SI_Glovia_SalesOrderCreate/src/main/resources/script/GLOVIA_Conditioncheck_Salesorder_Create.groovy: 5: unable to resolve class XmlSlurper
- @ line 5, column 15.
-       def xml = new XmlSlurper().parseText(body)
-                 ^
-
-1 error
-">MultipleCompilationErrorsException: startup failed:
-/home/runner/work/SAPIS/SAPIS/CI-CD/iflows/SI_Glovia_SalesOrderCreate/src/main/resources/script/GLOVIA_Conditioncheck_Salesorder_Create.groovy: 5: unable to resolve class XmlSlurper
- @ line 5, column 15.
-       def xml = new XmlSlurper().parseText(body)
-                 ^
-
-1 error
-</failure></testcase>
-    <testcase classname="GLOVIA_Conditioncheck_Salesorder_Create.groovy" name="GLOVIA_Conditioncheck_Salesorder_Create :: sales_order_unmatched_route" time="0.01"><failure message="MultipleCompilationErrorsException: startup failed:
+    <testcase classname="GLOVIA_Conditioncheck_Salesorder_Create.groovy" name="GLOVIA_Conditioncheck_Salesorder_Create :: valid_order_yorb" time="0.012"><failure message="MultipleCompilationErrorsException: startup failed:
 /home/runner/work/SAPIS/SAPIS/CI-CD/iflows/SI_Glovia_SalesOrderCreate/src/main/resources/script/GLOVIA_Conditioncheck_Salesorder_Create.groovy: 5: unable to resolve class XmlSlurper
  @ line 5, column 15.
        def xml = new XmlSlurper().parseText(body)
@@ -62,10 +32,7 @@
 1 error
 </failure></testcase>
   </testsuite>
-  <testsuite name="Interface_Generic_Headers.groovy" tests="4" failures="0" errors="0" time="0">
-    <testcase classname="Interface_Generic_Headers.groovy" name="Interface_Generic_Headers :: sales_order_malformed" time="0.052"></testcase>
-    <testcase classname="Interface_Generic_Headers.groovy" name="Interface_Generic_Headers :: sales_order_return" time="0.018"></testcase>
-    <testcase classname="Interface_Generic_Headers.groovy" name="Interface_Generic_Headers :: sales_order_standard" time="0.016"></testcase>
-    <testcase classname="Interface_Generic_Headers.groovy" name="Interface_Generic_Headers :: sales_order_unmatched_route" time="0.015"></testcase>
+  <testsuite name="Interface_Generic_Headers.groovy" tests="1" failures="0" errors="0" time="0">
+    <testcase classname="Interface_Generic_Headers.groovy" name="Interface_Generic_Headers :: payload" time="0.065"></testcase>
   </testsuite>
 </testsuites>

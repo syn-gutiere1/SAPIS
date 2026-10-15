@@ -1,4 +1,4 @@
-[FAIL] GLOVIA_Conditioncheck_Salesorder_Create :: sales_order_malformed (56 ms)
+[FAIL] GLOVIA_Conditioncheck_Salesorder_Create :: invalid_order_code (42 ms)
          -> MultipleCompilationErrorsException: startup failed:
 /home/runner/work/SAPIS/SAPIS/CI-CD/iflows/SI_Glovia_SalesOrderCreate/src/main/resources/script/GLOVIA_Conditioncheck_Salesorder_Create.groovy: 5: unable to resolve class XmlSlurper
  @ line 5, column 15.
@@ -7,7 +7,7 @@
 
 1 error
 
-[FAIL] GLOVIA_Conditioncheck_Salesorder_Create :: sales_order_return (11 ms)
+[FAIL] GLOVIA_Conditioncheck_Salesorder_Create :: valid_order_yorb (12 ms)
          -> MultipleCompilationErrorsException: startup failed:
 /home/runner/work/SAPIS/SAPIS/CI-CD/iflows/SI_Glovia_SalesOrderCreate/src/main/resources/script/GLOVIA_Conditioncheck_Salesorder_Create.groovy: 5: unable to resolve class XmlSlurper
  @ line 5, column 15.
@@ -16,28 +16,7 @@
 
 1 error
 
-[FAIL] GLOVIA_Conditioncheck_Salesorder_Create :: sales_order_standard (10 ms)
-         -> MultipleCompilationErrorsException: startup failed:
-/home/runner/work/SAPIS/SAPIS/CI-CD/iflows/SI_Glovia_SalesOrderCreate/src/main/resources/script/GLOVIA_Conditioncheck_Salesorder_Create.groovy: 5: unable to resolve class XmlSlurper
- @ line 5, column 15.
-       def xml = new XmlSlurper().parseText(body)
-                 ^
+[PASS] Interface_Generic_Headers :: payload (65 ms)
 
-1 error
-
-[FAIL] GLOVIA_Conditioncheck_Salesorder_Create :: sales_order_unmatched_route (10 ms)
-         -> MultipleCompilationErrorsException: startup failed:
-/home/runner/work/SAPIS/SAPIS/CI-CD/iflows/SI_Glovia_SalesOrderCreate/src/main/resources/script/GLOVIA_Conditioncheck_Salesorder_Create.groovy: 5: unable to resolve class XmlSlurper
- @ line 5, column 15.
-       def xml = new XmlSlurper().parseText(body)
-                 ^
-
-1 error
-
-[PASS] Interface_Generic_Headers :: sales_order_malformed (52 ms)
-[PASS] Interface_Generic_Headers :: sales_order_return (18 ms)
-[PASS] Interface_Generic_Headers :: sales_order_standard (16 ms)
-[PASS] Interface_Generic_Headers :: sales_order_unmatched_route (15 ms)
-
-Summary: 4 passed, 4 failed, 8 total
+Summary: 1 passed, 2 failed, 3 total
 JUnit XML: CI-CD/reports/SI_Glovia_SalesOrderCreate/junit-groovy.xml

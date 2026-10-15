@@ -1,22 +1,22 @@
 [
   {
-    "risk": "Payload Loss During Exception Handling",
-    "consequence": "If mapping or script execution fails downstream and the original request payload is not preserved, operators cannot reconstruct or replay failed sales transactions.",
-    "mitigation": "Enricher CallActivity_4 caches raw body into ${property.InputPayload} at start, and CallActivity_97 in SubProcess_91 restores and attaches it using Log_Payload script."
+    "risk": "Unhandled giic_OrderTypeCode__c leads to EscalationEndEvent terminating with RoutingConditionNotMet",
+    "consequence": "Sales orders or return orders with new or unmapped order types are terminated immediately without notification sent to sender or dead-letter queuing.",
+    "mitigation": "TC_GLOVIA_SO_003 asserts that the default route triggers the escalation code explicitly, validating that monitoring alerts can trigger on 'RoutingConditionNotMet'."
   },
   {
-    "risk": "Unrouted Business Messages Dropped Silently",
-    "consequence": "Orders with new, unconfigured, or altered OrderTypeCode values are neither processed nor tracked, causing silent business loss and order fulfillment delays.",
-    "mitigation": "ExclusiveGateway_80 routes non-matching messages to default SequenceFlow_110 into EscalationEndEvent EndEvent_11 with explicit ErrorCode RoutingConditionNotMet."
+    "risk": "Unconnected BPMN activities (CallActivity_77 and CallActivity_86) left orphan in flow model",
+    "consequence": "Validation script 'GLOVIA_Conditioncheck_Salesorder_Create.groovy' and XPath extraction for OrganizationId are never invoked, creating false confidence in logic validation.",
+    "mitigation": "Coverage analysis documents these orphan nodes; test suite verifies behavior with and without script evaluation to identify gaps."
   },
   {
-    "risk": "Disconnected Pipeline Artifacts in BPMN Model",
-    "consequence": "CallActivity_86 (Content Modifier extracting OrganizationId) and CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) are orphaned nodes in the BPMN XML without sequence flow connections, leading to dead configuration or skipped validations.",
-    "mitigation": "Integration unit suite identifies uncalled artifacts and asserts routing logic behavior independently to verify whether routing relies on script evaluation or direct XPath expressions."
+    "risk": "Inbound SOAP message payload buffering in property '${in.body}' causing Out-Of-Memory (OOM) on large payloads",
+    "consequence": "High-volume batches or large notification bodies cached in Java heap property InputPayload can cause JVM heap exhaustion and cluster node restarts.",
+    "mitigation": "MessageFlow SOAP adapter limits maximumBodySize to 40MB; Exception Subprocess TC_GLOVIA_SO_004 ensures memory recovery during parsing failures."
   },
   {
-    "risk": "Receiver Service Timeout and Lack of Retry on Endpoints",
-    "consequence": "Network timeouts communicating with REST receivers (Participant_2 / Participant_112) could cause duplicate order creations or lost acknowledgments.",
-    "mitigation": "Exception subprocess catches connectivity faults, writes MPL audit attachments, and propagates standard SOAP Fault to sender to trigger upstream retry."
+    "risk": "OneWay SOAP pattern prevents sender from receiving synchronous fault or escalation details",
+    "consequence": "Glovia sender receives HTTP 202 acknowledgment while downstream flow fails silently in ErrorEndEvent or EscalationEndEvent.",
+    "mitigation": "Exception Subprocess (SubProcess_91) logs raw payload via Log_Payload.gsh for manual operational replay via MPL attachments."
   }
 ]

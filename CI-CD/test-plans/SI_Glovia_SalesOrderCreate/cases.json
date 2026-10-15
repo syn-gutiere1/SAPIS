@@ -1,44 +1,37 @@
 [
   {
-    "id": "TC-SO-01",
-    "name": "Standard Sales Order Processing Path",
-    "trigger": "Inbound SOAP message with valid Sales Order notification (giic_OrderTypeCode__c = 'YORB')",
-    "expected_outcome": "Message is enriched with metadata properties and headers, evaluates to Glovia_Route_SalesOrder, executes Test_Mapping message mapping, applies generic headers, and completes successfully at EndEvent_2",
-    "validates": "CallActivity_4 (Content Modifier), ParallelGateway_74, ExclusiveGateway_80 (SalesOrder route), CallActivity_102 (Message Mapping 1), CallActivity_13 (Generic Headers), EndEvent_2"
+    "id": "TC_GLOVIA_SO_001",
+    "name": "Standard Sales Order Creation Route",
+    "trigger": "SOAP 1.x OneWay message to /Glovia_SalesOrder containing valid giic_OrderTypeCode__c matching Glovia_Route_SalesOrder condition",
+    "expected_outcome": "HTTP 202/200 Accepted, payload routed via SequenceFlow_82, Message Mapping 1 executed, Generic Headers set, flow completes at EndEvent_2",
+    "validates": "CallActivity_4 (Property & Header setting), ExclusiveGateway_80 (SalesOrder condition), CallActivity_102 (Message Mapping), CallActivity_13 (Interface_Generic_Headers.groovy), EndEvent_2"
   },
   {
-    "id": "TC-SR-02",
-    "name": "Sales Order Return Processing Path",
-    "trigger": "Inbound SOAP message with Return Sales Order notification (giic_OrderTypeCode__c = 'POR')",
-    "expected_outcome": "Message is enriched, evaluates Glovia_Route2_ReturnSalesOrder condition, skips mapping, invokes CallActivity_71 for custom header logging, and terminates successfully at EndEvent_9",
-    "validates": "ExclusiveGateway_80 (SO Return create route), CallActivity_71 (Generic Headers), EndEvent_9"
+    "id": "TC_GLOVIA_SO_002",
+    "name": "Sales Order Return Route",
+    "trigger": "SOAP 1.x OneWay message to /Glovia_SalesOrder containing giic_OrderTypeCode__c matching Glovia_Route2_ReturnSalesOrder condition",
+    "expected_outcome": "HTTP 202/200 Accepted, payload routed via SequenceFlow_113, CallActivity_71 executed with custom headers logged, flow completes at EndEvent_9",
+    "validates": "ExclusiveGateway_80 (SO Return create condition), CallActivity_71 (Interface_Generic_Headers.groovy), EndEvent_9"
   },
   {
-    "id": "TC-ESC-03",
-    "name": "Unmatched Routing Condition - Escalation Path",
-    "trigger": "Inbound SOAP message with unknown or unconfigured OrderTypeCode (e.g., 'UNKNOWN_TYPE')",
-    "expected_outcome": "Router default branch SequenceFlow_110 is selected, terminating at EndEvent_11 with escalation code RoutingConditionNotMet",
-    "validates": "ExclusiveGateway_80 default path (SequenceFlow_110), EndEvent_11 (EscalationEndEvent with ErrorCode RoutingConditionNotMet)"
+    "id": "TC_GLOVIA_SO_003",
+    "name": "Router Condition Default Fallback - Escalation End",
+    "trigger": "SOAP 1.x message with unrecognized giic_OrderTypeCode__c or criteria failing both Route 1 and Route 2 conditions",
+    "expected_outcome": "Message routes via default branch SequenceFlow_110 to EndEvent_11, raising escalation error code RoutingConditionNotMet",
+    "validates": "ExclusiveGateway_80 (default branch fallback), EndEvent_11 (EscalationEndEvent with ErrorCode RoutingConditionNotMet)"
   },
   {
-    "id": "TC-ERR-04",
-    "name": "Mapping Failure Triggers Exception Subprocess",
-    "trigger": "Inbound SOAP message triggering Sales Order route with corrupted data causing Test_Mapping runtime failure",
-    "expected_outcome": "Exception caught by StartEvent_92, CallActivity_97 restores original body from property.InputPayload, CallActivity_100 logs raw payload, and flow terminates with ErrorEndEvent",
-    "validates": "SubProcess_91, StartEvent_92, CallActivity_97 (Property Enricher), CallActivity_100 (Log Payload Script), EndEvent_95"
+    "id": "TC_GLOVIA_SO_004",
+    "name": "Exception Subprocess Execution on Processing Fault",
+    "trigger": "SOAP 1.x message causing downstream runtime exception (e.g. malformed XML structure during mapping execution)",
+    "expected_outcome": "SubProcess_91 catches error via StartEvent_92, CallActivity_97 restores original body from property.InputPayload, CallActivity_100 logs original payload via Log_Payload.gsh, terminates at EndEvent_95",
+    "validates": "SubProcess_91 (ErrorEventSubProcessTemplate), CallActivity_97 (Payload enrichment from property), CallActivity_100 (Log_Payload.gsh), EndEvent_95"
   },
   {
-    "id": "TC-SEC-05",
-    "name": "SOAP Adapter Security / Authorization Failure",
-    "trigger": "Inbound SOAP HTTP request missing required ESBMessaging.send role credentials or invalid signature",
-    "expected_outcome": "Inbound adapter rejects message with HTTP 401/403 before integration process starts",
-    "validates": "MessageFlow_114 inbound security configuration and userRole enforcement"
-  },
-  {
-    "id": "TC-BND-06",
-    "name": "Boundary Payload Size Validation",
-    "trigger": "Inbound SOAP request exceeding maximumBodySize limit of 40MB configured on SOAP sender channel",
-    "expected_outcome": "SOAP CXF runtime raises payload size limit exception, rejecting execution at adapter level",
-    "validates": "MessageFlow_114 parameter maximumBodySize=40"
+    "id": "TC_GLOVIA_SO_005",
+    "name": "Boundary / Edge Case - Empty Header Parameters and Special Characters",
+    "trigger": "SOAP message with payload containing special XML characters and externalized header placeholders evaluated as null/empty",
+    "expected_outcome": "Properties and headers safely populated without NullPointerException in Interface_Generic_Headers.groovy, successful progression through matching route",
+    "validates": "CallActivity_4 null handling, Interface_Generic_Headers.groovy defensive null checks for Country, Region, BusinessObject, Sender, TimeStamp"
   }
 ]
