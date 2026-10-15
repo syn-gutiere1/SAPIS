@@ -303,18 +303,27 @@ jobs:
           set -o pipefail
           mkdir -p "$REPORTS_DIR"
 
-          # The script folder is derived from the artifact layout, not from the
-          # changed files. Deriving it from `changed_files` meant the harness could
-          # only run when a `.groovy` happened to have changed, and it produced an
-          # empty path when it had not. `matrix.artifact_root` is the directory of
-          # the `.iflw`; `script/` is its sibling inside the resources tree, which
-          # is why the path resolves as `<artifact_root>/../script`.
-          SCRIPT_DIR="$(cd "$SOURCE_DIR/$(dirname "${{ matrix.artifact_root }}")" && pwd)/script"
+          # The script folder is derived from the artifact layout. `script/` is a
+          # sibling of `scenarioflows/`, both under the resources root, so a single
+          # `dirname` on the `.iflw` directory lands one level too deep - it did,
+          # and the harness silently reported "no script directory" while the job
+          # stayed green. Python does the walk because the paths may contain spaces.
+          SCRIPT_DIR="$(python -c '
+          import sys
+          from pathlib import Path
+          source = Path(sys.argv[1]).resolve()
+          artifact_root = Path(sys.argv[2])
+          parts = artifact_root.parts
+          resources = artifact_root
+          if parts[:3] == ("src", "main", "resources"):
+              resources = Path(*parts[:3])
+          print((source / resources / "script").as_posix())
+          ' "$SOURCE_DIR" "${{ matrix.artifact_root }}")"
           echo "SCRIPT_DIR=$SCRIPT_DIR" >> "$GITHUB_ENV"
 
           if [ ! -d "$SCRIPT_DIR" ]; then
-            echo "::warning::No script directory at $SCRIPT_DIR: this artifact has no .groovy scripts to execute."
-            exit 0
+            echo "::error::No script directory at $SCRIPT_DIR. The artifact layout was not understood; the Groovy scripts cannot be executed."
+            exit 1
           fi
           if ! compgen -G "$SCRIPT_DIR/*.groovy" > /dev/null; then
             echo "::notice::No .groovy script in $SCRIPT_DIR; nothing for the harness to run."
