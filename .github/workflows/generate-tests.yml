@@ -277,7 +277,7 @@ jobs:
       #
       # The second half matches any file under `/script/` rather than a `.groovy`
       # suffix, because a script may also be a `.gsh`. Matching the suffix would skip
-      # the harness for a push that changes only `Log_Payload (1).gsh`.
+      # the harness for a push that changes only a `.gsh` script.
       - name: Install JDK 17
         if: matrix.has_iflow_change || contains(join(matrix.changed_files, ' '), '/script/')
         uses: actions/setup-java@v4

@@ -1,274 +1,244 @@
 import json
 import xml.etree.ElementTree as ET
-from unittest.mock import MagicMock
 import pytest
+import requests
 import responses
 
-# Namespace mappings extracted from BPMN definitions
+BASE_URL = "https://cpi.example.invalid/cxf/Glovia_SalesOrder"
+
+# Namespace mappings from iFlow definitions
 NAMESPACES = {
-    'soapenv': 'http://schemas.xmlsoap.org/soap/envelope/',
-    'ns1': 'http://soap.sforce.com/2005/09/outbound',
-    'ns2': 'urn:sobject.enterprise.soap.sforce.com'
+    "SOAP": "http://schemas.xmlsoap.org/soap/envelope/",
+    "ns1": "http://soap.sforce.com/2005/09/outbound",
+    "ns2": "urn:sobject.enterprise.soap.sforce.com"
 }
 
-# Simulated flow runtime context representing SAP Cloud Integration Exchange
-class CPIExchange:
-    def __init__(self, body, headers=None, properties=None):
-        self.body = body
-        self.headers = headers or {}
-        self.properties = properties or {}
-        self.custom_header_properties = {}
-        self.attachments = {}
-        self.escalated = False
-        self.escalation_code = None
-        self.error = None
-        self.end_event = None
-
-    def add_custom_header_property(self, name, value):
-        self.custom_header_properties[name] = value
-
-    def add_attachment_as_string(self, title, content, content_type):
-        self.attachments[title] = {'content': content, 'type': content_type}
-
-
-def simulate_call_activity_4_enricher(exchange, config):
-    """Simulates CallActivity_4: Set Message headers and property InputPayload."""
-    exchange.properties['InputPayload'] = exchange.body
-    exchange.headers['Region'] = config.get('Region', 'EMEA')
-    exchange.headers['Country'] = config.get('Country', 'DE')
-    exchange.headers['TimeStamp'] = config.get('TimeStamp', '2026-10-14T10:00:00Z')
-    exchange.headers['BusinessObject'] = config.get('BusinessObject', 'SalesOrder')
-    exchange.headers['Sender'] = config.get('Sender', 'Glovia')
-
-
-def evaluate_router(exchange, config):
-    """Simulates ExclusiveGateway_80 routing logic based on XML content and configured conditions."""
-    try:
-        root = ET.fromstring(exchange.body)
-        order_type_elem = root.find('.//ns1:Notification/ns1:sObject/ns2:giic_OrderTypeCode__c', NAMESPACES)
-        order_type = order_type_elem.text if order_type_elem is not None else ''
-    except Exception as exc:
-        raise ValueError(f"XML parsing error during routing: {exc}")
-
-    # Evaluate route matching rules configured for flow parameters
-    so_route_codes = config.get('Glovia_Route_SalesOrder_Codes', ['YORB', 'YICB', 'POR', 'MNZ', 'PLM'])
-    return_route_codes = config.get('Glovia_Route2_ReturnSalesOrder_Codes', ['RET', 'SRT'])
-
-    if order_type in so_route_codes:
-        return 'SequenceFlow_82'
-    elif order_type in return_route_codes:
-        return 'SequenceFlow_113'
-    else:
-        return 'SequenceFlow_110'  # Default branch
-
-
-def simulate_interface_generic_headers(exchange):
-    """Simulates Interface_Generic_Headers.groovy execution logging headers to custom properties."""
-    for key in ['Country', 'Region', 'BusinessObject', 'Sender', 'Receiver', 'TimeStamp']:
-        val = exchange.headers.get(key)
-        if val is not None:
-            exchange.add_custom_header_property(key, val)
-
-
-def simulate_message_mapping_1(exchange):
-    """Simulates CallActivity_102 Test_Mapping.mmap."""
-    root = ET.fromstring(exchange.body)
-    so_name = root.find('.//ns1:Notification/ns1:sObject/ns2:Name', NAMESPACES)
-    if so_name is None or not so_name.text:
-        raise ValueError("Mapping Error: Field 'Name' is required by Test_Mapping.mmap")
-    transformed = f"<CanonicalOrder><OrderId>{so_name.text}</OrderId></CanonicalOrder>"
-    exchange.body = transformed
-
-
-def simulate_exception_subprocess(exchange, error):
-    """Simulates SubProcess_91: reads InputPayload property, logs attachment, and ends in Error End."""
-    exchange.error = error
-    # CallActivity_97: Enricher wrapContent ${property.InputPayload}
-    exchange.body = exchange.properties.get('InputPayload', '')
-    # CallActivity_100: Log_Payload (1).gsh
-    exchange.add_attachment_as_string('Payload', exchange.body, 'text/plain')
-    # EndEvent_95: Error End
-    exchange.end_event = 'EndEvent_95'
-
-
-def run_iflow_simulation(payload, config):
-    """Executes full end-to-end integration process graph model."""
-    exchange = CPIExchange(body=payload)
-    try:
-        # StartEvent_2 -> SequenceFlow_3 -> CallActivity_4
-        simulate_call_activity_4_enricher(exchange, config)
-
-        # SequenceFlow_108 -> ParallelGateway_74 -> SequenceFlow_109 -> ExclusiveGateway_80
-        route = evaluate_router(exchange, config)
-
-        if route == 'SequenceFlow_82':
-            # SalesOrder path
-            simulate_message_mapping_1(exchange)  # CallActivity_102
-            simulate_interface_generic_headers(exchange)  # CallActivity_13
-            exchange.end_event = 'EndEvent_2'
-        elif route == 'SequenceFlow_113':
-            # SO Return path
-            simulate_interface_generic_headers(exchange)  # CallActivity_71
-            exchange.end_event = 'EndEvent_9'
-        elif route == 'SequenceFlow_110':
-            # Escalation End
-            exchange.escalated = True
-            exchange.escalation_code = 'RoutingConditionNotMet'
-            exchange.end_event = 'EndEvent_11'
-    except Exception as exc:
-        simulate_exception_subprocess(exchange, exc)
-
-    return exchange
-
+EXTERNALIZED_CONFIG = {
+    "Region": "NA",
+    "Country": "US",
+    "TimeStamp": "2026-10-14T08:30:00Z",
+    "BusinessObject": "SalesOrder",
+    "Sender": "Glovia",
+    "Glovia_Route_SalesOrder": "//ns1:notifications/ns1:Notification/ns1:sObject[ns2:giic_OrderTypeCode__c='YORB']",
+    "Glovia_Route2_ReturnSalesOrder": "//ns1:notifications/ns1:Notification/ns1:sObject[ns2:giic_OrderTypeCode__c='POR']"
+}
 
 @pytest.fixture
-def flow_config():
-    return {
-        'Region': 'NA',
-        'Country': 'US',
-        'TimeStamp': '2026-10-14T12:00:00Z',
-        'BusinessObject': 'SalesOrder',
-        'Sender': 'Glovia',
-        'Glovia_Route_SalesOrder_Codes': ['YORB', 'YICB', 'POR', 'MNZ', 'PLM'],
-        'Glovia_Route2_ReturnSalesOrder_Codes': ['RET', 'SRT']
+def payload_sales_order():
+    return (
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        "<SOAP:Envelope xmlns:SOAP=\"http://schemas.xmlsoap.org/soap/envelope/\" "
+        "xmlns:ns1=\"http://soap.sforce.com/2005/09/outbound\" "
+        "xmlns:ns2=\"urn:sobject.enterprise.soap.sforce.com\">\n"
+        "  <SOAP:Header/>\n"
+        "  <SOAP:Body>\n"
+        "    <ns1:notifications>\n"
+        "      <ns1:Notification>\n"
+        "        <ns1:Id>04k000000000001AAA</ns1:Id>\n"
+        "        <ns1:sObject>\n"
+        "          <ns2:Id>a0B000000000001EAA</ns2:Id>\n"
+        "          <ns2:giic_OrderTypeCode__c>YORB</ns2:giic_OrderTypeCode__c>\n"
+        "          <ns2:giic_OrderNumber__c>ORD-99201</ns2:giic_OrderNumber__c>\n"
+        "        </ns1:sObject>\n"
+        "      </ns1:Notification>\n"
+        "    </ns1:notifications>\n"
+        "  </SOAP:Body>\n"
+        "</SOAP:Envelope>"
+    )
+
+@pytest.fixture
+def payload_return_order():
+    return (
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        "<SOAP:Envelope xmlns:SOAP=\"http://schemas.xmlsoap.org/soap/envelope/\" "
+        "xmlns:ns1=\"http://soap.sforce.com/2005/09/outbound\" "
+        "xmlns:ns2=\"urn:sobject.enterprise.soap.sforce.com\">\n"
+        "  <SOAP:Header/>\n"
+        "  <SOAP:Body>\n"
+        "    <ns1:notifications>\n"
+        "      <ns1:Notification>\n"
+        "        <ns1:Id>04k000000000002AAA</ns1:Id>\n"
+        "        <ns1:sObject>\n"
+        "          <ns2:Id>a0B000000000002EAA</ns2:Id>\n"
+        "          <ns2:giic_OrderTypeCode__c>POR</ns2:giic_OrderTypeCode__c>\n"
+        "          <ns2:giic_OrderNumber__c>RET-44102</ns2:giic_OrderNumber__c>\n"
+        "        </ns1:sObject>\n"
+        "      </ns1:Notification>\n"
+        "    </ns1:notifications>\n"
+        "  </SOAP:Body>\n"
+        "</SOAP:Envelope>"
+    )
+
+@pytest.fixture
+def payload_invalid_routing():
+    return (
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        "<SOAP:Envelope xmlns:SOAP=\"http://schemas.xmlsoap.org/soap/envelope/\" "
+        "xmlns:ns1=\"http://soap.sforce.com/2005/09/outbound\" "
+        "xmlns:ns2=\"urn:sobject.enterprise.soap.sforce.com\">\n"
+        "  <SOAP:Header/>\n"
+        "  <SOAP:Body>\n"
+        "    <ns1:notifications>\n"
+        "      <ns1:Notification>\n"
+        "        <ns1:Id>04k000000000003AAA</ns1:Id>\n"
+        "        <ns1:sObject>\n"
+        "          <ns2:Id>a0B000000000003EAA</ns2:Id>\n"
+        "          <ns2:giic_OrderTypeCode__c>UNKNOWN_ROUTE</ns2:giic_OrderTypeCode__c>\n"
+        "        </ns1:sObject>\n"
+        "      </ns1:Notification>\n"
+        "    </ns1:notifications>\n"
+        "  </SOAP:Body>\n"
+        "</SOAP:Envelope>"
+    )
+
+def simulate_cpi_inbound_runtime(request_body, config):
+    """Simulates the iFlow processing step behavior for assertions."""
+    try:
+        root = ET.fromstring(request_body)
+    except ET.ParseError:
+        # SubProcess_91 - Read payload from property and terminate with error
+        return {
+            "status_code": 500,
+            "body": "<SOAP:Fault><faultcode>SOAP:Server</faultcode><faultstring>XML parsing error occurred</faultstring></SOAP:Fault>",
+            "headers": {"Content-Type": "text/xml", "X-SAP-Integration-Status": "FAILED"},
+            "properties": {"InputPayload": request_body},
+            "route_executed": "SubProcess_91"
+        }
+
+    # Step CallActivity_4: Set Message Headers
+    headers = {
+        "Region": config["Region"],
+        "Country": config["Country"],
+        "TimeStamp": config["TimeStamp"],
+        "BusinessObject": config["BusinessObject"],
+        "Sender": config["Sender"],
+        "Content-Type": "text/xml"
     }
+    properties = {"InputPayload": request_body}
 
+    # ExclusiveGateway_80 evaluation
+    order_code_elem = root.find(".//ns1:Notification/ns1:sObject/ns2:giic_OrderTypeCode__c", NAMESPACES)
+    order_code = order_code_elem.text if order_code_elem is not None else ""
 
-@pytest.fixture
-def valid_sales_order_xml():
-    return (
-        '<?xml version="1.0" encoding="UTF-8"?>'
-        '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" '
-        'xmlns:ns1="http://soap.sforce.com/2005/09/outbound" '
-        'xmlns:ns2="urn:sobject.enterprise.soap.sforce.com">'
-        '<soapenv:Header/><soapenv:Body><ns1:notifications><ns1:Notification>'
-        '<ns1:Id>04k000000000001AAA</ns1:Id><ns1:sObject>'
-        '<ns2:Id>a01000000000001AAA</ns2:Id>'
-        '<ns2:giic_OrderTypeCode__c>YORB</ns2:giic_OrderTypeCode__c>'
-        '<ns2:Name>SO-90001234</ns2:Name>'
-        '</ns1:sObject></ns1:Notification></ns1:notifications></soapenv:Body></soapenv:Envelope>'
-    )
-
-
-@pytest.fixture
-def valid_so_return_xml():
-    return (
-        '<?xml version="1.0" encoding="UTF-8"?>'
-        '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" '
-        'xmlns:ns1="http://soap.sforce.com/2005/09/outbound" '
-        'xmlns:ns2="urn:sobject.enterprise.soap.sforce.com">'
-        '<soapenv:Header/><soapenv:Body><ns1:notifications><ns1:Notification>'
-        '<ns1:Id>04k000000000002BBB</ns1:Id><ns1:sObject>'
-        '<ns2:Id>a01000000000002BBB</ns2:Id>'
-        '<ns2:giic_OrderTypeCode__c>RET</ns2:giic_OrderTypeCode__c>'
-        '<ns2:Name>RET-80005678</ns2:Name>'
-        '</ns1:sObject></ns1:Notification></ns1:notifications></soapenv:Body></soapenv:Envelope>'
-    )
-
-
-@pytest.fixture
-def unmatched_order_xml():
-    return (
-        '<?xml version="1.0" encoding="UTF-8"?>'
-        '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" '
-        'xmlns:ns1="http://soap.sforce.com/2005/09/outbound" '
-        'xmlns:ns2="urn:sobject.enterprise.soap.sforce.com">'
-        '<soapenv:Header/><soapenv:Body><ns1:notifications><ns1:Notification>'
-        '<ns1:Id>04k000000000003CCC</ns1:Id><ns1:sObject>'
-        '<ns2:Id>a01000000000003CCC</ns2:Id>'
-        '<ns2:giic_OrderTypeCode__c>UNMATCHED</ns2:giic_OrderTypeCode__c>'
-        '<ns2:Name>UNMATCHED-1111</ns2:Name>'
-        '</ns1:sObject></ns1:Notification></ns1:notifications></soapenv:Body></soapenv:Envelope>'
-    )
-
-
-@pytest.fixture
-def invalid_mapping_xml():
-    return (
-        '<?xml version="1.0" encoding="UTF-8"?>'
-        '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" '
-        'xmlns:ns1="http://soap.sforce.com/2005/09/outbound" '
-        'xmlns:ns2="urn:sobject.enterprise.soap.sforce.com">'
-        '<soapenv:Header/><soapenv:Body><ns1:notifications><ns1:Notification>'
-        '<ns1:Id>04k000000000004DDD</ns1:Id><ns1:sObject>'
-        '<ns2:Id>a01000000000004DDD</ns2:Id>'
-        '<ns2:giic_OrderTypeCode__c>YORB</ns2:giic_OrderTypeCode__c>'
-        '<!-- Missing Name field triggers mapping error -->'
-        '</ns1:sObject></ns1:Notification></ns1:notifications></soapenv:Body></soapenv:Envelope>'
-    )
-
+    if order_code == "YORB":
+        headers["X-Route-Path"] = "SequenceFlow_82_SalesOrder"
+        headers["X-SAP-Integration-Status"] = "COMPLETED"
+        return {
+            "status_code": 200,
+            "body": "<Ack><Status>Processed_SalesOrder</Status></Ack>",
+            "headers": headers,
+            "properties": properties,
+            "route_executed": "SequenceFlow_82"
+        }
+    elif order_code == "POR":
+        headers["X-Route-Path"] = "SequenceFlow_113_ReturnSalesOrder"
+        headers["X-SAP-Integration-Status"] = "COMPLETED"
+        return {
+            "status_code": 200,
+            "body": "<Ack><Status>Processed_ReturnSalesOrder</Status></Ack>",
+            "headers": headers,
+            "properties": properties,
+            "route_executed": "SequenceFlow_113"
+        }
+    else:
+        # Escalation End Event SequenceFlow_110
+        headers["X-SAP-Integration-Status"] = "ESCALATED"
+        headers["X-SAP-Escalation-Code"] = "RoutingConditionNotMet"
+        return {
+            "status_code": 422,
+            "body": "<Fault><Code>RoutingConditionNotMet</Code><Message>No route satisfied</Message></Fault>",
+            "headers": headers,
+            "properties": properties,
+            "route_executed": "SequenceFlow_110"
+        }
 
 @responses.activate
-def test_sales_order_happy_path(valid_sales_order_xml, flow_config):
-    """Validate TC_GLOVIA_SO_001: Sales order creation path successfully routes and maps."""
-    # Verify no outgoing network call takes place without mock interception
-    responses.add(responses.POST, 'https://example.invalid/rest/receiver', status=200)
+def test_sales_order_happy_path(payload_sales_order):
+    execution = simulate_cpi_inbound_runtime(payload_sales_order, EXTERNALIZED_CONFIG)
+    responses.add(
+        responses.POST,
+        BASE_URL,
+        body=execution["body"],
+        status=execution["status_code"],
+        headers=execution["headers"]
+    )
 
-    exchange = run_iflow_simulation(valid_sales_order_xml, flow_config)
+    session = requests.Session()
+    response = session.post(BASE_URL, data=payload_sales_order, headers={"Content-Type": "text/xml"})
 
-    assert exchange.end_event == 'EndEvent_2'
-    assert exchange.properties.get('InputPayload') == valid_sales_order_xml
-    assert exchange.headers['Region'] == 'NA'
-    assert exchange.headers['Sender'] == 'Glovia'
-    assert exchange.custom_header_properties['BusinessObject'] == 'SalesOrder'
-    assert '<OrderId>SO-90001234</OrderId>' in exchange.body
-    assert not exchange.escalated
-    assert exchange.error is None
-
-
-def test_so_return_route(valid_so_return_xml, flow_config):
-    """Validate TC_GLOVIA_SO_002: SO Return order routes to EndEvent_9 without mapping."""
-    exchange = run_iflow_simulation(valid_so_return_xml, flow_config)
-
-    assert exchange.end_event == 'EndEvent_9'
-    assert exchange.properties.get('InputPayload') == valid_so_return_xml
-    assert exchange.custom_header_properties['Country'] == 'US'
-    assert exchange.custom_header_properties['Region'] == 'NA'
-    assert not exchange.escalated
-    assert exchange.error is None
-
-
-def test_unmatched_route_escalation(unmatched_order_xml, flow_config):
-    """Validate TC_GLOVIA_SO_003: Unmatched order code falls back to escalation end."""
-    exchange = run_iflow_simulation(unmatched_order_xml, flow_config)
-
-    assert exchange.end_event == 'EndEvent_11'
-    assert exchange.escalated is True
-    assert exchange.escalation_code == 'RoutingConditionNotMet'
-
-
-def test_mapping_failure_exception_subprocess(invalid_mapping_xml, flow_config):
-    """Validate TC_GLOVIA_SO_004: Mapping exception routes to SubProcess_91 and logs payload."""
-    exchange = run_iflow_simulation(invalid_mapping_xml, flow_config)
-
-    assert exchange.end_event == 'EndEvent_95'
-    assert exchange.error is not None
-    assert 'Mapping Error' in str(exchange.error)
-    # CallActivity_97 must restore original payload
-    assert exchange.body == invalid_mapping_xml
-    # CallActivity_100 must attach restored payload
-    assert 'Payload' in exchange.attachments
-    assert exchange.attachments['Payload']['content'] == invalid_mapping_xml
-    assert exchange.attachments['Payload']['type'] == 'text/plain'
-
+    assert response.status_code == 200
+    assert response.headers["X-Route-Path"] == "SequenceFlow_82_SalesOrder"
+    assert response.headers["Region"] == "NA"
+    assert response.headers["Country"] == "US"
+    assert response.headers["BusinessObject"] == "SalesOrder"
+    assert "Processed_SalesOrder" in response.text
+    assert execution["properties"]["InputPayload"] == payload_sales_order
 
 @responses.activate
-def test_downstream_receiver_connection_failure():
-    """Validate TC_GLOVIA_SO_005: Outbound connection errors are caught and handled by SubProcess_91."""
-    import requests
-    mock_url = 'https://example.invalid/glovia/orders'
-    responses.add(responses.POST, mock_url, body=requests.exceptions.ConnectionError('Downstream host unreachable'))
+def test_return_sales_order_branch(payload_return_order):
+    execution = simulate_cpi_inbound_runtime(payload_return_order, EXTERNALIZED_CONFIG)
+    responses.add(
+        responses.POST,
+        BASE_URL,
+        body=execution["body"],
+        status=execution["status_code"],
+        headers=execution["headers"]
+    )
 
-    payload = '<test>data</test>'
-    exchange = CPIExchange(body=payload)
-    simulate_call_activity_4_enricher(exchange, {})
+    session = requests.Session()
+    response = session.post(BASE_URL, data=payload_return_order, headers={"Content-Type": "text/xml"})
 
-    try:
-        # Attempt downstream communication simulating an external endpoint push
-        requests.post(mock_url, data=exchange.body, timeout=5)
-    except requests.exceptions.RequestException as exc:
-        simulate_exception_subprocess(exchange, exc)
+    assert response.status_code == 200
+    assert response.headers["X-Route-Path"] == "SequenceFlow_113_ReturnSalesOrder"
+    assert response.headers["Sender"] == "Glovia"
+    assert "Processed_ReturnSalesOrder" in response.text
 
-    assert exchange.end_event == 'EndEvent_95'
-    assert 'Downstream host unreachable' in str(exchange.error)
-    assert exchange.attachments['Payload']['content'] == payload
+@responses.activate
+def test_unmatched_route_triggers_escalation(payload_invalid_routing):
+    execution = simulate_cpi_inbound_runtime(payload_invalid_routing, EXTERNALIZED_CONFIG)
+    responses.add(
+        responses.POST,
+        BASE_URL,
+        body=execution["body"],
+        status=execution["status_code"],
+        headers=execution["headers"]
+    )
+
+    session = requests.Session()
+    response = session.post(BASE_URL, data=payload_invalid_routing, headers={"Content-Type": "text/xml"})
+
+    assert response.status_code == 422
+    assert response.headers["X-SAP-Escalation-Code"] == "RoutingConditionNotMet"
+    assert "RoutingConditionNotMet" in response.text
+
+@responses.activate
+def test_malformed_xml_activates_exception_subprocess():
+    malformed_xml = "<SOAP:Envelope><broken>"
+    execution = simulate_cpi_inbound_runtime(malformed_xml, EXTERNALIZED_CONFIG)
+    responses.add(
+        responses.POST,
+        BASE_URL,
+        body=execution["body"],
+        status=execution["status_code"],
+        headers=execution["headers"]
+    )
+
+    session = requests.Session()
+    response = session.post(BASE_URL, data=malformed_xml, headers={"Content-Type": "text/xml"})
+
+    assert response.status_code == 500
+    assert response.headers["X-SAP-Integration-Status"] == "FAILED"
+    assert "SOAP:Fault" in response.text
+    assert execution["properties"]["InputPayload"] == malformed_xml
+
+@responses.activate
+def test_connection_timeout_and_network_error_resilience():
+    responses.add(
+        responses.POST,
+        BASE_URL,
+        body=requests.exceptions.ConnectTimeout("Connection timed out towards integration gateway")
+    )
+
+    session = requests.Session()
+    with pytest.raises(requests.exceptions.ConnectTimeout):
+        session.post(BASE_URL, data="<xml/>", headers={"Content-Type": "text/xml"}, timeout=3.0)

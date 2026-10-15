@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Payload for Log_Payload (1).gsh.
+  Payload for Log_Payload.gsh.
 
   That script reads the body, attaches it to the message log as "Payload" with the
   content type "text/plain", and returns the message untouched. The body IS the

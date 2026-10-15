@@ -7,8 +7,8 @@ this iFlow outside the SAP tenant.
 
 One folder per script, named after the script without its extension and with anything
 outside `[A-Za-z0-9._-]` replaced by `_`. Both `.groovy` and `.gsh` are executed: SAP
-CPI uses either extension for a Groovy script, and scanning only `.groovy` left
-`Log_Payload (1).gsh` with no coverage at all even though the `.iflw` calls it.
+CPI uses either extension for a Groovy script, and scanning only `.groovy` left a real
+script with no coverage at all even though the `.iflw` calls it.
 
 ```
 GLOVIA_Conditioncheck_Salesorder_Create/
@@ -22,7 +22,7 @@ Interface_Generic_Headers/
 ├── payload.inject.json              headers set on the message before execution
 └── payload.assert.json              expects those headers to be written to the log
 
-Log_Payload__1_/                     <- sanitised from `Log_Payload (1).gsh`
+Log_Payload/
 ├── payload.xml                      body the script must attach unchanged
 └── payload.assert.json              expects the "Payload" attachment with that content
 ```

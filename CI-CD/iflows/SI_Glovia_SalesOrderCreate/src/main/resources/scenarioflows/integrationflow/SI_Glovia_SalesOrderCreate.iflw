@@ -321,7 +321,7 @@
                     </ifl:property>
                     <ifl:property>
                         <key>script</key>
-                        <value>Log_Payload (1).gsh</value>
+                        <value>Log_Payload.gsh</value>
                     </ifl:property>
                 </bpmn2:extensionElements>
                 <bpmn2:incoming>SequenceFlow_98</bpmn2:incoming>
@@ -898,5 +898,5 @@
             </bpmndi:BPMNEdge>
         </bpmndi:BPMNPlane>
     </bpmndi:BPMNDiagram>
-<!-- hidden files validation -->
+<!-- dashboard validation -->
 </bpmn2:definitions>

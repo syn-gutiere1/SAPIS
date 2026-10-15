@@ -581,9 +581,9 @@ def test_scan_all_on_the_real_artifact_passes():
       - navigation by namespace prefix (`xml.'ns1:notifications'...`), which
         `XmlSlurper` can never match because it discards prefixes, so every order
         was marked invalid including the valid `YORB` one;
-      - `Log_Payload (1).gsh` not being executed at all, because the scan only
-        looked for `.groovy`. SAP CPI uses `.gsh` too, and this script is
-        referenced by the `.iflw`.
+      - `Log_Payload.gsh` not being executed at all, because the scan only looked
+        for `.groovy`. SAP CPI uses `.gsh` too, and this script is referenced by
+        the `.iflw`.
 
     The set of scripts is asserted, not only the verdict. Without that, a script
     silently dropping out of the scan would keep this test green - the exact
@@ -627,8 +627,7 @@ def _plain_script() -> str:
 def test_gsh_scripts_are_scanned(tmp_path: Path):
     """
     `.gsh` is the other extension SAP CPI uses for a Groovy script, and it was not
-    scanned. A production script named `Log_Payload (1).gsh` therefore had no
-    coverage at all.
+    scanned, so a production script using it had no coverage at all.
     """
     scripts = tmp_path / "script"
     scripts.mkdir()
@@ -651,13 +650,13 @@ def test_gsh_scripts_are_scanned(tmp_path: Path):
 
 def test_fixture_folder_for_an_awkward_name_is_reported(tmp_path: Path):
     """
-    A real script is called `Log_Payload (1).gsh`. Its fixture folder cannot carry
-    spaces and parentheses, so the name is sanitised - and the harness prints the
+    SAP can hand us a script whose name carries spaces and parentheses. Its fixture
+    folder cannot carry those, so the name is sanitised - and the harness prints the
     name to create, because it is not guessable.
     """
     scripts = tmp_path / "script"
     scripts.mkdir()
-    (scripts / "Log_Payload (1).gsh").write_text(_plain_script(), encoding="utf-8")
+    (scripts / "My Script (1).gsh").write_text(_plain_script(), encoding="utf-8")
 
     # `--testdata` must exist (the harness validates it), but it holds no fixture for
     # this script, so the flat fallback finds nothing and the message must say which
@@ -667,5 +666,5 @@ def test_fixture_folder_for_an_awkward_name_is_reported(tmp_path: Path):
 
     result = _run_scan(scripts, testdata, "--require-fixtures")
 
-    assert "Log_Payload__1_" in result.stdout
+    assert "My_Script__1_" in result.stdout
     assert "expected a folder named" in result.stdout
