@@ -288,11 +288,24 @@ Python, so a defect in the real script never failed the build -- the test passed
 validating a Python copy of the rule.
 
 ```bash
+# Groovy 4 is required, and it is what the workflow pins. Groovy 3 silently
+# accepts constructs that fail on the runtime the iFlow is deployed to, so a
+# green run under Groovy 3 proves less than it appears to.
 groovy -cp stubs groovy-harness/TestHarness.groovy \
   --scan-all CI-CD/iflows/<iFlowName>/src/main/resources/script \
-  --testdata CI-CD/tests/<iFlowName>/testdata \
+  --testdata CI-CD/groovy-fixtures/<iFlowName> \
   --junit CI-CD/reports/<iFlowName>/junit-groovy.xml
 ```
+
+> **Run the harness with Groovy 4.** The pinned distribution is `4.0.24`, matching the
+> Groovy 4 runtime. Under Groovy 3 the condition script compiles and the harness reports
+> the namespace defect; under Groovy 4 it does not compile at all, which is the more
+> serious finding and the one that blocks the runtime upgrade. Checking with Groovy 3
+> therefore hides a real defect. Both findings are in Known findings.
+
+The fixtures argument points at `CI-CD/groovy-fixtures/<iFlowName>`, never at the
+generated `tests/<iFlowName>/testdata` tree. The writer wipes its output directory on
+every run, so fixtures kept there are deleted before the harness can read them.
 
 | Flag | Meaning |
 |---|---|
@@ -548,6 +561,28 @@ above is what remains of that groundwork, and it is not referenced by either wor
 ---
 
 ## Known findings
+
+- **The condition script does not compile on Groovy 4.** Line 5 of
+  `GLOVIA_Conditioncheck_Salesorder_Create.groovy` calls `new XmlSlurper()` with no
+  import. On Groovy 3 that resolves through the implicit `groovy.util` import and the
+  script compiles; on Groovy 4 `groovy.util.XmlSlurper` is no longer auto-imported and
+  the script fails to compile:
+
+  ```text
+  unable to resolve class XmlSlurper
+   @ line 5, column 15.
+  ```
+
+  Consequences: on a Groovy 4 runtime the whole script raises, so no order is validated
+  at all, and the script blocks the iFlow from the Groovy 4 upgrade. SAP documents the
+  incompatibility and the fix: `import groovy.util.XmlSlurper` is incompatible with the
+  Groovy 4 runtime and should become `import groovy.xml.XmlSlurper`
+  ([SAP: Use Import Statements Supported by the Script Runtime](https://github.com/SAP-docs/btp-integration-suite/blob/main/docs/ci/Development/use-import-statements-supported-by-the-script-runtime-13fee7f.md)).
+
+  **The harness must therefore run Groovy 4**, which is what `GROOVY_VERSION: "4.0.24"`
+  in the workflow pins. A local Groovy 3 does not reproduce this and reports the
+  lower-level namespace defect instead: the two are different failures with different
+  fixes, and only Groovy 4 shows both. See the Groovy harness section.
 
 - **Namespace defect in the Glovia condition script.**
   `GLOVIA_Conditioncheck_Salesorder_Create.groovy` navigates with namespace-prefixed
