@@ -294,3 +294,69 @@ def test_cli_nonexistent_repo_returns_exit_2(tmp_path: Path):
 
     assert result.returncode == 2
     assert "repository not found" in result.stderr
+
+
+def test_pipeline_code_is_not_attributed_to_an_iflow(tmp_path: Path):
+    """
+    Regression for a false positive that made every root-level change resolve to
+    the first iFlow in the tree.
+
+    The old grouping walked *up* from each changed file until it found any
+    `*.iflw`. In the single-repository layout that reached the repository root,
+    where `rglob` finds every artifact, so a change to `src/pipeline/cli.py`
+    produced a job for the Glovia flow with `has_iflow_change: false`.
+    """
+    repo = tmp_path / "repo"
+    (repo / "src/pipeline").mkdir(parents=True)
+    (repo / "src/pipeline/cli.py").write_text("x = 1\n", encoding="utf-8")
+    (repo / "CI-CD/iflows/FlowA/src/main/resources/scenarioflows/integrationflow").mkdir(parents=True)
+    (repo / "CI-CD/iflows/FlowA/src/main/resources/script").mkdir(parents=True)
+    (
+        repo
+        / "CI-CD/iflows/FlowA/src/main/resources/scenarioflows/integrationflow/FlowA.iflw"
+    ).write_text("<x/>", encoding="utf-8")
+    (repo / "CI-CD/iflows/FlowA/src/main/resources/script/Rule.groovy").write_text(
+        "// rule", encoding="utf-8"
+    )
+
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "config", "user.name", "Test")
+    _git(repo, "config", "user.email", "test@example.com")
+    _commit(repo, "c1: one artifact at a nested path")
+
+    matrix = build_matrix.build_matrix(["src/pipeline/cli.py"], repo, "SAPIS")
+
+    assert matrix == [], "pipeline code must not create a job for an iFlow"
+
+
+def test_nested_artifact_script_is_attributed(tmp_path: Path):
+    """
+    A script in the sibling `script/` folder belongs to the artifact, even though
+    it is not under the `.iflw` directory. The match uses the package prefix for
+    exactly this reason.
+    """
+    repo = tmp_path / "repo"
+    (repo / "CI-CD/iflows/FlowA/src/main/resources/scenarioflows/integrationflow").mkdir(parents=True)
+    (repo / "CI-CD/iflows/FlowA/src/main/resources/script").mkdir(parents=True)
+    (
+        repo
+        / "CI-CD/iflows/FlowA/src/main/resources/scenarioflows/integrationflow/FlowA.iflw"
+    ).write_text("<x/>", encoding="utf-8")
+    script = repo / "CI-CD/iflows/FlowA/src/main/resources/script/Rule.groovy"
+    script.write_text("// v1", encoding="utf-8")
+
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "config", "user.name", "Test")
+    _git(repo, "config", "user.email", "test@example.com")
+    _commit(repo, "c1")
+    script.write_text("// v2", encoding="utf-8")
+    sha = _commit(repo, "c2: script only")
+
+    matrix = build_matrix.build_matrix(
+        ["CI-CD/iflows/FlowA/src/main/resources/script/Rule.groovy"], repo, "SAPIS"
+    )
+
+    assert len(matrix) == 1
+    assert matrix[0]["iflow"] == "FlowA"
+    assert matrix[0]["path"] == "CI-CD/iflows/FlowA"
+    assert matrix[0]["has_iflow_change"] is False

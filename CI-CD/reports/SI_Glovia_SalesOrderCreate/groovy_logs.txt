@@ -1,0 +1,6 @@
+[PASS] GLOVIA_Conditioncheck_Salesorder_Create :: invalid_order_code (145 ms)
+[PASS] GLOVIA_Conditioncheck_Salesorder_Create :: valid_order_yorb (49 ms)
+[PASS] Interface_Generic_Headers :: payload (45 ms)
+
+Summary: 3 passed, 0 failed, 3 total
+JUnit XML: CI-CD/reports/SI_Glovia_SalesOrderCreate/junit-groovy.xml

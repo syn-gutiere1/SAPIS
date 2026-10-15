@@ -34,12 +34,19 @@ script without a reviewed fixture fails the job and names it.
 
 Without an `.assert.json` the test only proves the script runs without throwing.
 
-## The defect these fixtures expose
+## The two defects these fixtures exposed, and their fix
 
-`GLOVIA_Conditioncheck_Salesorder_Create.groovy` marks **every** order as invalid,
-including valid codes such as `YORB`.
+The fixtures were written against the **correct** behaviour (`valid_order_yorb`
+expects `OrderCodeValid = true`), so they stayed red until the script was fixed.
+They exposed two defects, and both are now corrected in the artifact:
 
-The script navigates the XML with namespace-prefixed accessors:
+**1. The script did not compile on Groovy 4.** `new XmlSlurper()` was called with no
+import. On Groovy 3 it resolved through the implicit `groovy.util` import; on
+Groovy 4 that import is gone and the whole script raised
+(`unable to resolve class XmlSlurper`). SAP documents the same fix for upgrade
+readiness. The script now imports `groovy.xml.XmlSlurper` explicitly.
+
+**2. Navigation by namespace prefix never matched.** The script read:
 
 ```groovy
 xml.'ns1:notifications'.'ns1:Notification'.'ns1:sObject'.'ns2:giic_OrderTypeCode__c'.text()
@@ -47,24 +54,24 @@ xml.'ns1:notifications'.'ns1:Notification'.'ns1:sObject'.'ns2:giic_OrderTypeCode
 
 `XmlSlurper` **discards namespace prefixes** when exposing element names —
 `xml.name()` returns `Envelope`, not `SOAP:Envelope` — and that holds even with
-`namespaceAware = true`. Those accessors therefore return nothing, the extracted
-code is `""`, and the valid-code list never contains `""`.
-
-The correct navigation uses the **local names**:
+`namespaceAware = true`. Those accessors returned nothing, the extracted code was
+`""`, and the valid-code list never contains `""`: **every** order was marked
+invalid, including valid codes such as `YORB`. The script now navigates by local
+name:
 
 ```groovy
 xml.Body.notifications.Notification.sObject.giic_OrderTypeCode__c.text()
 ```
 
-### Why the fixtures describe the correct behaviour
+### Why the fixtures needed no change
 
-`valid_order_yorb.assert.json` expects `OrderCodeValid = true`, which is what the
-flow is *supposed* to do. The harness runs the real script, so the Groovy job fails
-until the iFlow is fixed.
+`valid_order_yorb.assert.json` expected `OrderCodeValid = true`, which is what the
+flow is *supposed* to do, so the harness was red until the iFlow was corrected and
+turned green on its own. That is the property worth keeping: the fixtures describe
+the intended behaviour, not the observed one, so they cannot silently ratify a bug.
 
-This is deliberate. The previous pipeline never executed the Groovy: the generated
-tests simulated the rule in Python, so this defect never surfaced. A red check here
-is the evidence.
+It also matters that the previous pipeline never executed the Groovy at all — the
+generated tests simulated the rule in Python — so neither defect could surface.
+`tests/test_groovy_harness.py::test_scan_all_on_the_real_artifact_passes` now guards
+both fixes and will fail if either returns.
 
-When the script is corrected in the iFlow, these fixtures need no change — the job
-turns green on its own.

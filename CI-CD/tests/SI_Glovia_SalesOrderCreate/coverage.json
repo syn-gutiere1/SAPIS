@@ -1,0 +1,32 @@
+{
+  "target_coverage_percent": 100,
+  "coverage_by_component": {
+    "StartEvent_2 (Start)": "100%",
+    "CallActivity_4 (Set Message headers & InputPayload property)": "100%",
+    "ParallelGateway_74 (Parallel Multicast)": "100%",
+    "ExclusiveGateway_80 (Router)": "100%",
+    "SequenceFlow_82 (SalesOrder condition route)": "100%",
+    "SequenceFlow_113 (SO Return create condition route)": "100%",
+    "SequenceFlow_110 (Default router escalation route)": "100%",
+    "CallActivity_102 (Message Mapping 1)": "100%",
+    "CallActivity_13 (Interface_Generic_Headers script - SO branch)": "100%",
+    "EndEvent_2 (SO End)": "100%",
+    "CallActivity_71 (Interface_Generic_Headers script - Return branch)": "100%",
+    "EndEvent_9 (Return End)": "100%",
+    "EndEvent_11 (Escalation End)": "100%",
+    "SubProcess_91 (Exception Subprocess)": "100%",
+    "StartEvent_92 (Error Start 1)": "100%",
+    "CallActivity_97 (Restore Payload from property)": "100%",
+    "CallActivity_100 (Log Payload Script Log_Payload (1).gsh)": "100%",
+    "EndEvent_95 (Error End)": "100%",
+    "CallActivity_77 & CallActivity_86 (Orphaned disconnected flow steps)": "0%"
+  },
+  "uncovered_paths": [
+    "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) and CallActivity_86 (Content Modifier extracting OrganizationId) are disconnected in the BPMN model with no SequenceFlows connected to them. They cannot be executed through normal flow traversal."
+  ],
+  "coverage_recommendations": [
+    "Achieve true 100% executable model coverage by connecting CallActivity_86 and CallActivity_77 in sequence between CallActivity_4 and ParallelGateway_74 or ExclusiveGateway_80, ensuring 'OrganizationId' and 'OrderCodeValid' headers are properly evaluated in the router.",
+    "Configure externalized parameter values for '{{Glovia_Route_SalesOrder}}' and '{{Glovia_Route2_ReturnSalesOrder}}' to explicitly check xpath '/ns1:notifications/ns1:Notification/ns1:sObject/ns2:giic_OrderTypeCode__c' or the header populated by CallActivity_77.",
+    "Add explicit message flow dispatch tests if REST receiver adapters are connected to Participant_2 and Participant_112."
+  ]
+}

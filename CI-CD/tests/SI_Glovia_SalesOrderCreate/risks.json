@@ -1,0 +1,22 @@
+[
+  {
+    "risk": "Message Loss via Escalation End without Outbound Alerting",
+    "consequence": "When an order type does not match either {{Glovia_Route_SalesOrder}} or {{Glovia_Route2_ReturnSalesOrder}}, the message branches to EndEvent_11 (EscalationEndEvent with code 'RoutingConditionNotMet'). If external notification or exception subprocess integration is omitted, business orders remain unprocessed without alerting the support team.",
+    "mitigation": "TC_GLOVIA_SO_003 asserts that the default path triggers escalation with ErrorCode 'RoutingConditionNotMet'. Integration tests verify routing fallthrough behavior and ensure custom header properties are persisted for trace tracking."
+  },
+  {
+    "risk": "Payload Loss or Corruption on Mapping Fault",
+    "consequence": "If CallActivity_102 fails during execution, downstream processing stops. If the original payload is not preserved prior to the mapping step, the Exception Subprocess cannot record or reprocess the incoming transaction.",
+    "mitigation": "TC_GLOVIA_SO_004 verifies that CallActivity_4 creates property 'InputPayload' from ${in.body} before routing, and SubProcess_91 (CallActivity_97) restores this exact property into the message body for attachment logging by CallActivity_100."
+  },
+  {
+    "risk": "Orphaned Components (CallActivity_77 and CallActivity_86)",
+    "consequence": "CallActivity_86 ('Content Modifier') and CallActivity_77 ('Groovy Script 2: GLOVIA_Conditioncheck_Salesorder_Create.groovy') are defined in BPMN XML but have no incoming or outgoing sequence flows. Any logic intended to populate 'OrganizationId' or validate order codes against ('YORB', 'YICB', 'POR', 'MNZ', 'PLM') is completely bypassed.",
+    "mitigation": "Scenario TC_GLOVIA_SO_001 and TC_GLOVIA_SO_003 test the actual gateway conditions. In coverage recommendations, it is documented to either rewire these activities prior to ExclusiveGateway_80 or remove them to eliminate configuration drift."
+  },
+  {
+    "risk": "Missing Receiver Endpoint Dispatch in Main Flow Branches",
+    "consequence": "Participant_2 and Participant_112 are present in the BPMN collaboration diagram, but Message Flows connecting CallActivity_13 / CallActivity_71 to the receiver participants are missing, leading to one-way termination at EndEvent_2 and EndEvent_9 without confirmed external dispatch.",
+    "mitigation": "Unit tests assert that execution reaches the termination events and that Generic Headers are populated. Tests incorporate simulated REST receiver dispatches to validate adapter error handling."
+  }
+]

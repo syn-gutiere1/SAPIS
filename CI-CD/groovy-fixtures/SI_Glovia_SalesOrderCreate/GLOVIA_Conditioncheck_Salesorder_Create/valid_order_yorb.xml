@@ -3,8 +3,12 @@
   Valid SOAP payload for the Glovia SalesOrderCreate flow.
 
   Carries a recognised order type code (YORB), so the condition script must set
-  OrderCodeValid = true. This fixture is the evidence that the real script is
-  broken: see CI-CD/tests/SI_Glovia_SalesOrderCreate/testdata/groovy/README.md.
+  OrderCodeValid = true.
+
+  This fixture was written against the intended behaviour, so it stayed red while
+  two defects lived in the real script (a missing XmlSlurper import, and navigation
+  by namespace prefix that XmlSlurper can never match). Both are now fixed and this
+  case passes. See the fixtures README.
 -->
 <SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/"
                xmlns:ns1="http://soap.sforce.com/2005/09/outbound"

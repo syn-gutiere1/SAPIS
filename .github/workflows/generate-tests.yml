@@ -196,8 +196,12 @@ jobs:
         run: pip install -r requirements-ci.txt
 
       # --- generation -------------------------------------------------------
+      # Generation happens when the `.iflw` changed, and ALSO when no suite is
+      # committed yet. The second half matters: "skip and reuse the versioned
+      # tests" is only valid if a suite is actually in the repository. On the first
+      # run after the artifacts start being committed there is none, and reusing
+      # nothing left the job claiming it had tested a flow it never looked at.
       - name: Generate the test package
-        if: matrix.has_iflow_change
         env:
           PORTKEY_AUTH_TOKEN: ${{ secrets.PORTKEY_AUTH_TOKEN }}
           PORTKEY_BASE_URL: ${{ vars.PORTKEY_BASE_URL }}
@@ -208,19 +212,28 @@ jobs:
           set -uo pipefail
           mkdir -p "$TESTS_DIR" "$PLANS_DIR" "$REPORTS_DIR"
 
-          echo "Generating from $SOURCE_DIR (the .iflw changed in this push)."
+          if [ "${{ matrix.has_iflow_change }}" != "true" ] && [ -f "$TESTS_DIR/test_flow.py" ]; then
+            echo "::notice::The .iflw of ${{ matrix.iflow }} did not change and a suite is already committed: reusing it."
+            echo "Generation runs at temperature > 0 with no seed, so regenerating from an unchanged .iflw"
+            echo "would rewrite test_flow.py with equivalent content and make the PR unreviewable. A change in"
+            echo "a script is covered by the Groovy harness, which executes the real .groovy."
+            {
+              echo ""
+              echo "> Generation skipped for \`${{ matrix.iflow }}\`: the \`.iflw\` did not change and a suite is committed."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ "${{ matrix.has_iflow_change }}" != "true" ]; then
+            echo "::warning::No committed suite for ${{ matrix.iflow }}: generating even though the .iflw did not change."
+          fi
+
+          echo "Generating from $SOURCE_DIR."
           python run.py \
             --source "$SOURCE_DIR" \
             --out "$TESTS_DIR" \
             --plans "$PLANS_DIR" \
             --json-report "$REPORTS_DIR/manifest.json"
-
-      - name: Explain the skipped generation
-        if: ${{ !matrix.has_iflow_change }}
-        run: |
-          set -uo pipefail
-          echo "::notice::The .iflw of ${{ matrix.iflow }} did not change: the tests already versioned are reused."
-          echo "Generation has temperature > 0 and no seed, so regenerating from an unchanged .iflw would rewrite test_flow.py with equivalent content and make the PR unreviewable. A change in a script is covered by the harness, which runs the real .groovy."
 
       # A run that did not generate must still have a suite to run; otherwise the
       # job would report success having tested nothing.
@@ -228,7 +241,7 @@ jobs:
         run: |
           set -uo pipefail
           if [ ! -f "$TESTS_DIR/test_flow.py" ]; then
-            echo "::error::No test_flow.py in $TESTS_DIR. The generation did not run (unchanged .iflw with no versioned suite) or it failed; run the workflow manually to generate it."
+            echo "::error::No test_flow.py in $TESTS_DIR. Generation did not produce a suite, or an unchanged .iflw had none committed. Run the workflow manually to generate it."
             exit 1
           fi
           echo "Suite found: $TESTS_DIR/test_flow.py"
@@ -258,8 +271,12 @@ jobs:
             2>&1 | tee "$REPORTS_DIR/pytest_logs.txt"
 
       # --- real Groovy scripts ----------------------------------------------
+      # Gated on the artifact having changed at all, not only on a `.groovy`
+      # change. A change to the `.iflw` can alter the flow behaviour, so the real
+      # scripts must run then too; gating only on `.groovy` silently skipped the
+      # harness on exactly the change that matters most.
       - name: Install JDK 17
-        if: contains(join(matrix.changed_files, ' '), '.groovy')
+        if: matrix.has_iflow_change || contains(join(matrix.changed_files, ' '), '.groovy')
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -269,7 +286,7 @@ jobs:
       # the stubs and the script on demand. `groovyc` would also be a trap on
       # Windows, where it is a batch file.
       - name: Install the pinned Groovy distribution
-        if: contains(join(matrix.changed_files, ' '), '.groovy')
+        if: matrix.has_iflow_change || contains(join(matrix.changed_files, ' '), '.groovy')
         run: |
           set -uo pipefail
           curl -sSL -o "$RUNNER_TEMP/groovy.zip" \
@@ -280,49 +297,136 @@ jobs:
 
       - name: Run the Groovy harness against the real scripts
         id: groovy
-        if: contains(join(matrix.changed_files, ' '), '.groovy')
+        if: matrix.has_iflow_change || contains(join(matrix.changed_files, ' '), '.groovy')
         continue-on-error: true
         run: |
           set -o pipefail
           mkdir -p "$REPORTS_DIR"
 
-          # The directory of the scripts changed by this push, derived from the
-          # changed files (matrix.artifact_root is the directory of the `.iflw`,
-          # which is a sibling of `script/`, not a resources root). Python is used
-          # because the filenames may contain spaces: `dirname`/`xargs` would
-          # split them.
+          # The script folder is derived from the artifact layout. `script/` is a
+          # sibling of `scenarioflows/`, both under the resources root, so a single
+          # `dirname` on the `.iflw` directory lands one level too deep - it did,
+          # and the harness silently reported "no script directory" while the job
+          # stayed green. Python does the walk because the paths may contain spaces.
           SCRIPT_DIR="$(python -c '
           import sys
-          from pathlib import PurePosixPath
-          files = [f for f in sys.argv[1:] if f.endswith(".groovy")]
-          if not files:
-              sys.exit(1)
-          parts = [PurePosixPath(f).parent.parts for f in files]
-          common = [group[0] for group in zip(*parts) if len(set(group)) == 1]
-          print(PurePosixPath(*common).as_posix())
-          ' ${{ join(matrix.changed_files, ' ') }})"
+          from pathlib import Path
+          source = Path(sys.argv[1]).resolve()
+          artifact_root = Path(sys.argv[2])
+          parts = artifact_root.parts
+          resources = artifact_root
+          if parts[:3] == ("src", "main", "resources"):
+              resources = Path(*parts[:3])
+          print((source / resources / "script").as_posix())
+          ' "$SOURCE_DIR" "${{ matrix.artifact_root }}")"
           echo "SCRIPT_DIR=$SCRIPT_DIR" >> "$GITHUB_ENV"
 
-          if [ -z "$SCRIPT_DIR" ] || [ ! -d "$SCRIPT_DIR" ]; then
-            echo "::error::Could not derive the directory of the changed .groovy scripts."
+          if [ ! -d "$SCRIPT_DIR" ]; then
+            echo "::error::No script directory at $SCRIPT_DIR. The artifact layout was not understood; the Groovy scripts cannot be executed."
             exit 1
           fi
-          export SCRIPT_DIR
+          if ! compgen -G "$SCRIPT_DIR/*.groovy" > /dev/null; then
+            echo "::notice::No .groovy script in $SCRIPT_DIR; nothing for the harness to run."
+            exit 0
+          fi
 
-          # The harness requires `--testdata` to exist. When it is missing the
-          # scripts cannot be executed, so say so instead of reporting a green
-          # result for something that never ran.
-          if [ ! -d "$TESTS_DIR/testdata" ]; then
-            mkdir -p "$TESTS_DIR/testdata"
-            echo "::warning::No fixtures in $TESTS_DIR/testdata: the scripts are not validated. Run the harness locally with --snapshot-missing and review the .assert.json."
+          # The reviewed fixtures live in CI-CD/groovy-fixtures/<iFlow>, deliberately
+          # OUTSIDE the `--out` tree. The writer wipes its output directory before
+          # rewriting - that is what stops stale fixtures from altering a result - so
+          # fixtures kept under `tests/<iFlow>/testdata/groovy` were deleted by the
+          # very generation step that precedes the harness. The harness then found an
+          # empty directory, executed the model's payloads instead (which carry no
+          # assertions, so every case "passed"), and the job went green against
+          # nothing. Keeping them outside the generated tree is what makes the
+          # harness meaningful.
+          GROOVY_TESTDATA="CI-CD/groovy-fixtures/${{ matrix.iflow }}"
+          if [ ! -d "$GROOVY_TESTDATA" ]; then
+            echo "::error::No reviewed fixtures at $GROOVY_TESTDATA. The Groovy scripts cannot be validated; commit the fixtures, or run the harness locally with --snapshot-missing and review the result."
+            exit 1
           fi
 
           echo "Scripts: $SCRIPT_DIR"
           groovy -cp stubs groovy-harness/TestHarness.groovy \
             --scan-all "$SCRIPT_DIR" \
-            --testdata "$TESTS_DIR/testdata" \
+            --testdata "$GROOVY_TESTDATA" \
             --junit "$REPORTS_DIR/junit-groovy.xml" \
             2>&1 | tee "$REPORTS_DIR/groovy_logs.txt"
+
+      # --- suggested fixes on failure ---------------------------------------
+      # Runs when EITHER suite failed. It used to be gated on pytest alone, so a
+      # failure that only the Groovy harness caught produced no suggestions at all,
+      # and the `ai_fix_suggestions.md` left in the tree was a stale file from an
+      # older run - worse than no file, because it looks current.
+      #
+      # It is advisory: the step may not fail the job, and the generated file is
+      # committed with the rest of the evidence.
+      - name: Analyse the failure and suggest fixes
+        id: suggestions
+        if: steps.pytest.outcome == 'failure' || steps.groovy.outcome == 'failure'
+        continue-on-error: true
+        env:
+          PORTKEY_AUTH_TOKEN: ${{ secrets.PORTKEY_AUTH_TOKEN }}
+          PORTKEY_BASE_URL: ${{ vars.PORTKEY_BASE_URL }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+          LANGUAGE_CODE: ${{ vars.LANGUAGE_CODE || 'en_US' }}
+          AI_PROMPT_FILE: prompt/prompt_template.txt
+        run: |
+          set -uo pipefail
+          mkdir -p "$REPORTS_DIR"
+
+          # Combine both logs: the useful evidence may be in either, and when only
+          # the harness fails the pytest log can be empty.
+          : > "$REPORTS_DIR/failure_context.txt"
+          for log in "$REPORTS_DIR/pytest_logs.txt" "$REPORTS_DIR/groovy_logs.txt"; do
+            if [ -f "$log" ]; then
+              echo "===== $(basename "$log") =====" >> "$REPORTS_DIR/failure_context.txt"
+              cat "$log" >> "$REPORTS_DIR/failure_context.txt"
+              echo "" >> "$REPORTS_DIR/failure_context.txt"
+            fi
+          done
+
+          if [ ! -s "$REPORTS_DIR/failure_context.txt" ]; then
+            echo "::warning::No failure log to analyse."
+            exit 0
+          fi
+
+          python run.py --mode analyze-failures \
+            --source "$SOURCE_DIR" \
+            --logs "$REPORTS_DIR/failure_context.txt" \
+            --suggestions "$REPORTS_DIR/ai_fix_suggestions.md"
+
+      - name: Summarize the suggested fixes
+        if: steps.suggestions.outcome == 'success'
+        continue-on-error: true
+        run: |
+          {
+            echo ""
+            echo "### Suggested fixes"
+            echo ""
+            echo "Written by a model from the iFlow XML and the failure log. Treat it as a"
+            echo "hypothesis to speed up the investigation, not as a verdict."
+            echo ""
+            cat "$REPORTS_DIR/ai_fix_suggestions.md"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish the suggested fixes in the PR
+        if: steps.suggestions.outcome == 'success'
+        continue-on-error: true
+        run: |
+          # The suggestion only has value where the developer is already looking, so
+          # a copy is staged for the PR body. It goes to `.pr/`, which is uploaded as
+          # part of the artifact: it used to be written into EVIDENCE_DIR, which the
+          # upload did not include, so the copy never reached the `open-pr` job and
+          # the PR body silently carried no suggestions at all.
+          PR_STAGE="${{ env.EVIDENCE_DIR }}/../.pr"
+          mkdir -p "$PR_STAGE"
+          {
+            echo ""
+            echo "### Suggested fixes for \`${{ matrix.iflow }}\`"
+            echo ""
+            cat "$REPORTS_DIR/ai_fix_suggestions.md"
+          } > "$PR_STAGE/suggestions-${{ matrix.iflow }}.md"
+          echo "Staged ${{ matrix.iflow }} suggestions for the PR body."
 
       # --- results ----------------------------------------------------------
       # The names MUST differ: the reporter keys the Check Run by `name`, so two
@@ -360,6 +464,47 @@ jobs:
             --iflow "${{ matrix.iflow }}" \
             --artifact-name "$ARTIFACT_NAME" >> "$GITHUB_STEP_SUMMARY"
 
+      # The pytest report only shows tests. This page puts the plan, the risks,
+      # the coverage estimate and the suggested fixes next to them, in one
+      # self-contained file that works offline.
+      - name: Build the evidence dashboard
+        if: always()
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          python scripts/build_dashboard.py \
+            --iflow "${{ matrix.iflow }}" \
+            --cases "$PLANS_DIR/cases.json" \
+            --risks "$PLANS_DIR/risks.json" \
+            --coverage "$PLANS_DIR/coverage.json" \
+            --manifest "$REPORTS_DIR/manifest.json" \
+            --junit "$REPORTS_DIR/junit.xml" \
+            --suggestions "$REPORTS_DIR/ai_fix_suggestions.md" \
+            --output "$REPORTS_DIR/dashboard.html"
+
+      # --- cleanup before versioning ----------------------------------------
+      # pytest writes `__pycache__` inside the test folder. This runs BEFORE the
+      # evidence is published so the `.pyc` reaches neither the repository nor the
+      # artifact - it did reach both in the first real run.
+      - name: Remove non-versionable leftovers
+        if: always()
+        continue-on-error: true
+        run: |
+          find "$TESTS_DIR" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
+          find "$TESTS_DIR" -type d -name .pytest_cache -prune -exec rm -rf {} + 2>/dev/null || true
+
+          # A run that passed must not leave the previous run's suggestions behind.
+          # The file is only rewritten when something fails, so without this a green
+          # run would keep committing a stale diagnosis of an already-fixed failure,
+          # dated to an older commit and looking entirely current.
+          rm -f "$REPORTS_DIR/failure_context.txt"
+          if [ "${{ steps.pytest.outcome }}" != "failure" ] && [ "${{ steps.groovy.outcome }}" != "failure" ]; then
+            if [ -f "$REPORTS_DIR/ai_fix_suggestions.md" ]; then
+              rm -f "$REPORTS_DIR/ai_fix_suggestions.md"
+              echo "Removed the stale ai_fix_suggestions.md: this run had no failures."
+            fi
+          fi
+
       - name: Publish the evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -367,11 +512,61 @@ jobs:
           name: ${{ env.ARTIFACT_NAME }}
           if-no-files-found: warn
           retention-days: 30
+          # `upload-artifact` skips hidden files by default - its glob runs with
+          # `includeHiddenFiles: false` - and `.pr/` starts with a dot. Without this
+          # the staged suggestions were silently dropped from the artifact, so the
+          # `open-pr` job never saw them and the PR body carried none while every
+          # step involved reported success.
+          include-hidden-files: true
           path: |
             ${{ env.REPORTS_DIR }}/**
             ${{ env.TESTS_DIR }}/**
             ${{ env.PLANS_DIR }}/**
             ${{ env.SOURCE_DIR }}/${{ matrix.artifact_root }}/**
+            .pr/**
+
+      # --- commit the generated artifacts --------------------------------
+      # Without this step the pipeline is a dead end: the files are generated on
+      # the runner and only survive as an artifact, so the PR would carry no plan,
+      # no suite and no evidence, and nothing would be reviewable in Git. This runs
+      # with `always()` so the artifacts are committed even when the tests fail -
+      # a failing suite is exactly the evidence worth preserving - and with
+      # `continue-on-error` so it cannot mask the verdict applied below.
+      #
+      # The push uses the default GITHUB_TOKEN. Commits made with that token do NOT
+      # trigger new workflow runs, which is what prevents a bot -> bot loop.
+      - name: Commit the generated artifacts
+        if: always()
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+
+          git config user.name "sap-is-bot"
+          git config user.email "sap-is-bot@users.noreply.github.com"
+
+          git add -A "$TESTS_DIR" "$PLANS_DIR" "$REPORTS_DIR"
+
+          if git diff --cached --quiet; then
+            echo "Nothing new to commit for ${{ matrix.iflow }}."
+            exit 0
+          fi
+
+          git commit -m "chore(ai): test plan for ${{ matrix.iflow }} at ${{ github.sha }}"
+
+          # Several matrix jobs push to the same branch at the same time. Without
+          # the rebase a push loses the race and fails with a non-fast-forward.
+          for attempt in 1 2 3 4 5; do
+            if git push; then
+              echo "Push succeeded on attempt $attempt."
+              exit 0
+            fi
+            echo "Push rejected; rebasing and retrying ($attempt/5)..."
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
+            sleep $((attempt * 3))
+          done
+
+          echo "::warning::Could not commit the artifacts for ${{ matrix.iflow }}. The evidence is still in the artifact $ARTIFACT_NAME."
+          exit 0
 
       # `continue-on-error` above keeps the reports and the evidence even when
       # the tests fail; the verdict is applied here, after everything was
@@ -415,9 +610,12 @@ jobs:
         with:
           path: ${{ env.EVIDENCE_DIR }}
 
-      # `git ls-remote` instead of a 403 from the API: this reads which branches
-      # exist without needing the pull-request permission, which makes the
-      # distinction between "no PR to update" and "not allowed to create PRs".
+      # The branch is checked with the API, not with `git ls-remote`. The checkout
+      # strips the credentials from the remote, so `ls-remote` failed with an
+      # authentication error - which this step then reported as "the base branch
+      # does not exist" and turned into an `exit 1`. The job aborted before it ever
+      # tried to create the PR, so the PR was never updated again: every run after
+      # the first left a stale body behind while the log blamed a missing branch.
       - name: Check whether PR creation is permitted
         id: permission
         env:
@@ -427,14 +625,25 @@ jobs:
           BASE="${{ github.event.repository.default_branch }}"
           echo "base=${BASE}" >> "$GITHUB_OUTPUT"
 
-          if ! git ls-remote --exit-code --heads origin "$BASE" > /dev/null 2>&1; then
-            echo "::error::The base branch '$BASE' does not exist on the remote; cannot open a PR into it."
+          if [ -z "$BASE" ]; then
+            echo "::error::Could not determine the default branch from the event payload."
+            exit 1
+          fi
+
+          # `gh api` answers 404 when the branch is absent and 403 when the token
+          # cannot read it; only the first means "cannot open a PR into it".
+          if ! BRANCH_JSON="$(gh api "repos/${{ github.repository }}/branches/${BASE}" 2>&1)"; then
+            if printf '%s' "$BRANCH_JSON" | grep -q '404'; then
+              echo "::error::The base branch '${BASE}' does not exist on the remote; cannot open a PR into it."
+            else
+              echo "::error::Could not read the base branch '${BASE}': ${BRANCH_JSON}"
+            fi
             exit 1
           fi
           echo "Base branch: $BASE"
 
           # Read-only probe. It cannot create anything, so a failure here means
-          # the token cannot even read the PR state.
+          # the token cannot even read the pull request state.
           if ! gh api "repos/${{ github.repository }}/pulls?state=open&head=${{ github.repository_owner }}:${{ github.ref_name }}&per_page=1" > /dev/null 2>&1; then
             echo "::warning::Could not read the pull request state; proceeding to the write."
           fi

@@ -35,12 +35,13 @@ access to credentials before that review.
 |   |-- build_matrix.py             # git diff -> changed iFlows + has_iflow_change
 |   |-- check_generated_tests.py    # static checks on the generated suite
 |   |-- derive_endpoint.py          # reads the HTTP trigger out of the .iflw (unused, see below)
+|-- build_dashboard.py           # single self-contained HTML dashboard
 |   |-- summarize.py                # Job Summary of the test workflow
 |   `-- write_pr_body.py            # PR body built from the evidence
 |-- groovy-harness/
 |   `-- TestHarness.groovy          # runs the REAL .groovy scripts
 |-- stubs/                          # SAP CPI classes (Message, MessageLog, ...)
-|-- tests/                          # the pipeline's own pytest suite (211 tests)
+|-- tests/                          # the pipeline's own pytest suite (236 tests)
 |-- legacy/                         # original pipeline, historical reference
 `-- .github/workflows/
     `-- generate-tests.yml          # sap-is -> tests -> PR into main
@@ -83,7 +84,7 @@ CI-CD/
 ```
 
 Until a suite has been generated, `CI-CD/tests/<iFlowName>/` holds only the
-hand-written `testdata/groovy/` fixtures; `CI-CD/test-plans/` and `CI-CD/reports/`
+hand-written fixtures in `CI-CD/groovy-fixtures/`; `CI-CD/test-plans/` and `CI-CD/reports/`
 appear on the first run.
 
 ---
@@ -183,7 +184,7 @@ pytest
 puts `src/` on `sys.path` before any import, so `pytest` from the repository root works
 without further setup.
 
-**Current count: 222 tests**, all passing. Verified with `python -m pytest -q` in this
+**Current count: 236 tests**, all passing. Verified with `python -m pytest -q` in this
 checkout, with Groovy on `PATH`.
 
 `conftest.py` replaces the `tmp_path` and `tmp_path_factory` fixtures. The native
@@ -287,11 +288,26 @@ Python, so a defect in the real script never failed the build -- the test passed
 validating a Python copy of the rule.
 
 ```bash
+# Groovy 4 is required, and it is what the workflow pins. Groovy 3 silently
+# accepts constructs that fail on the runtime the iFlow is deployed to, so a
+# green run under Groovy 3 proves less than it appears to.
 groovy -cp stubs groovy-harness/TestHarness.groovy \
   --scan-all CI-CD/iflows/<iFlowName>/src/main/resources/script \
-  --testdata CI-CD/tests/<iFlowName>/testdata \
+  --testdata CI-CD/groovy-fixtures/<iFlowName> \
   --junit CI-CD/reports/<iFlowName>/junit-groovy.xml
 ```
+
+> **Run the harness with Groovy 4.** The pinned distribution is `4.0.24`, matching the
+> Groovy 4 runtime. This is not a detail: when the condition script was still broken it
+> failed differently under each version. Groovy 3 compiled it and reported the namespace
+> defect; Groovy 4 refused to compile it at all, which was the more serious finding and
+> the one that blocked the runtime upgrade. A local check with Groovy 3 hid it. Both are
+> fixed now, and the reason to stay on Groovy 4 is that it is the runtime the iFlow is
+> deployed to. See Known findings.
+
+The fixtures argument points at `CI-CD/groovy-fixtures/<iFlowName>`, never at the
+generated `tests/<iFlowName>/testdata` tree. The writer wipes its output directory on
+every run, so fixtures kept there are deleted before the harness can read them.
 
 | Flag | Meaning |
 |---|---|
@@ -351,17 +367,18 @@ snapshot awaiting human review: confirm the observed values and remove the
 
 This is deliberate. A snapshot describes what the script *does*, not what it *should do*.
 Without the lock, a real defect would be frozen as an expectation and the test would pass
-forever -- which is very close to what happened with the namespace defect below.
+forever -- which is very close to what happened with the namespace defect recorded in
+Known findings.
 
 CI uses `--require-fixtures` instead. A snapshot created on the runner would never be
 committed, so the next run would repeat the same warning; with `--require-fixtures` the
 job fails and lists the scripts that still have no reviewed fixture.
 
-The fixtures in `CI-CD/tests/SI_Glovia_SalesOrderCreate/testdata/groovy/` are hand-written
-and describe the behaviour the flow is *supposed* to have. They need no change when the
-script is fixed: the job turns green on its own. See
-[the fixtures README](CI-CD/tests/SI_Glovia_SalesOrderCreate/testdata/groovy/README.md)
-for the namespace defect in detail.
+The fixtures in `CI-CD/groovy-fixtures/SI_Glovia_SalesOrderCreate/` are hand-written
+and describe the behaviour the flow is *supposed* to have. They needed no change when the
+script was fixed: the job turned green on its own. See
+[the fixtures README](CI-CD/groovy-fixtures/SI_Glovia_SalesOrderCreate/README.md)
+for the two defects they exposed.
 
 ---
 
@@ -455,6 +472,48 @@ decide between "run the smoke test" and "skip it with an honest message".
 
 ---
 
+## The evidence dashboard
+
+`report.html` shows test results. The dashboard shows the whole run: the plan, the
+risks, the coverage estimate and the suggested fixes next to the results, in one
+page with tabs.
+
+```bash
+python scripts/build_dashboard.py \
+  --iflow SI_Glovia_SalesOrderCreate \
+  --cases CI-CD/test-plans/SI_Glovia_SalesOrderCreate/cases.json \
+  --risks CI-CD/test-plans/SI_Glovia_SalesOrderCreate/risks.json \
+  --coverage CI-CD/test-plans/SI_Glovia_SalesOrderCreate/coverage.json \
+  --manifest CI-CD/reports/SI_Glovia_SalesOrderCreate/manifest.json \
+  --junit CI-CD/reports/SI_Glovia_SalesOrderCreate/junit.xml \
+  --suggestions CI-CD/reports/SI_Glovia_SalesOrderCreate/ai_fix_suggestions.md \
+  --output CI-CD/reports/SI_Glovia_SalesOrderCreate/dashboard.html
+```
+
+It is written to `CI-CD/reports/<iFlow>/dashboard.html` and committed with the rest
+of the evidence. The tabs are Overview, Tests, Scenarios, Risks, Coverage and
+Suggested fixes; the hash in the URL selects a tab, so a link can point at one.
+
+### Why a separate file instead of tabs inside `report.html`
+
+`report.html` is produced by `pytest-html`, which has no public hook for adding
+tabs. Adding them means monkey-patching someone else's HTML, which breaks on their
+next release. A page of our own is simpler and lets the plan and the risks be
+first-class content rather than attachments.
+
+### Why it is self-contained
+
+CSS and JavaScript are inlined and **no CDN is referenced**. Evidence has to be
+readable from a downloaded artifact, from a Release, or from an e-mail attachment,
+with no network access. There is a test asserting that the page contains no
+external URL.
+
+Every input is optional. A file that is missing renders as "not available" with the
+reason, never as an empty section that could be mistaken for data: a reviewer has
+to be able to tell "no risks were found" from "the risks file was not produced".
+
+---
+
 ## Workflows
 
 ### `generate-tests.yml` -- Generate tests
@@ -506,21 +565,44 @@ above is what remains of that groundwork, and it is not referenced by either wor
 
 ## Known findings
 
-- **Namespace defect in the Glovia condition script.**
-  `GLOVIA_Conditioncheck_Salesorder_Create.groovy` navigates with namespace-prefixed
-  accessors (`xml.'ns1:notifications'.'ns1:Notification'....`). `XmlSlurper` discards the
-  prefixes when exposing element names -- `xml.name()` returns `Envelope`, not
-  `SOAP:Envelope` -- even with `namespaceAware = true`. Those accessors return nothing, the
-  extracted order code is `""`, and the valid-code list never contains `""`. Consequence:
-  the script marks **every** order as invalid (`OrderCodeValid = false`), including valid
-  codes such as `YORB`. The correct navigation uses the local names
-  (`xml.Body.notifications.Notification.sObject.giic_OrderTypeCode__c.text()`). The
-  harness detects it, and the tests that pin it are
+- **Two defects in the Glovia condition script -- found and FIXED.** They are kept
+  here because the way they were found is the argument for the harness, and because
+  the tests that guard them will fail if either returns.
+
+  **1. The script did not compile on Groovy 4.** `new XmlSlurper()` was called with
+  no import. On Groovy 3 that resolved through the implicit `groovy.util` import; on
+  Groovy 4 it is no longer auto-imported, so the script raised:
+
+  ```text
+  unable to resolve class XmlSlurper
+   @ line 5, column 15.
+  ```
+
+  On the deployment runtime the whole script raised, so no order was validated, and
+  the script blocked the iFlow from the Groovy 4 upgrade. SAP documents the same
+  incompatibility and the same fix, `import groovy.xml.XmlSlurper`
+  ([SAP: Use Import Statements Supported by the Script Runtime](https://github.com/SAP-docs/btp-integration-suite/blob/main/docs/ci/Development/use-import-statements-supported-by-the-script-runtime-13fee7f.md)).
+
+  **2. Navigation by namespace prefix never matched.** The script read
+  `xml.'ns1:notifications'.'ns1:Notification'....`. `XmlSlurper` discards prefixes
+  when exposing element names -- `xml.name()` returns `Envelope`, not
+  `SOAP:Envelope` -- even with `namespaceAware = true`. Those accessors returned
+  nothing, the order code came back as `""`, and the valid-code list never contains
+  `""`: **every** order was marked invalid, including the valid `YORB` one. The fix
+  navigates by local name:
+  `xml.Body.notifications.Notification.sObject.giic_OrderTypeCode__c.text()`.
+
+  Both are corrected in the artifact. Guarding them:
   `tests/test_groovy_harness.py::test_harness_detects_script_with_namespace_bug` and
-  `tests/test_groovy_harness.py::test_scan_all_on_the_real_artifact_reports_the_defect`;
-  the latter asserts the defect is still present, so it will start failing when the iFlow
-  is fixed. That failure is the signal to invert the reviewed fixtures. See
-  [the fixtures README](CI-CD/tests/SI_Glovia_SalesOrderCreate/testdata/groovy/README.md).
+  `tests/test_groovy_harness.py::test_scan_all_on_the_real_artifact_passes`, the
+  latter asserting the whole script directory is green. See
+  [the fixtures README](CI-CD/groovy-fixtures/SI_Glovia_SalesOrderCreate/README.md).
+
+  **Why the harness has to run Groovy 4.** `GROOVY_VERSION: "4.0.24"` is pinned in the
+  workflow for this reason. Under Groovy 3 the namespace defect is what you see, and
+  the compilation defect is invisible; only Groovy 4 shows both, and it is the one
+  that blocks the runtime upgrade. Checking locally with Groovy 3 hides a real
+  defect. See the Groovy harness section.
 
 - **Truncation dropped a third of the flow, silently.** A fixed 30 000-character limit
   against a 45 225-character real flow; the truncated run produced 6 scenarios instead of

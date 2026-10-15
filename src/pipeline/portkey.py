@@ -398,17 +398,18 @@ def suggest_fixes(
     max_output_chars: int = 20_000,
 ) -> str:
     """
-    Analyzes a pytest failure log and suggests fixes in the iFlow/scripts.
+    Analyse a failure log and suggest fixes in the iFlow and its scripts.
 
-    Replaces `--analyze-failures` from the original pipeline, which rebuilt the
-    `export\\<iFlow>.zip` path (a file that no longer exists in the new design).
+    The log may come from the generated pytest suite or from the Groovy harness.
+    Both matter: when only the harness fails, the useful evidence is its output,
+    which names the real script and the assertion that did not hold.
     """
     settings = settings or Settings.from_env()
     system_prompt = (
-        "You are a senior SAP integration engineer. The pytest script generated for the SAP "
-        "Integration Flow has failed. Analyze the pytest failure logs alongside the original "
+        "You are a senior SAP integration engineer. The tests generated for the SAP "
+        "Integration Flow have failed. Analyze the failure logs alongside the original "
         "flow. Provide concrete suggestions on what needs to be fixed in the SAP IS XML or "
-        "Groovy scripts. "
+        "the Groovy scripts. "
         f"Answer in the language corresponding to the ISO code {settings.language_code}."
     )
 

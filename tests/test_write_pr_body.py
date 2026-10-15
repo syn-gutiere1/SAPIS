@@ -35,8 +35,33 @@ JUNIT = """<?xml version="1.0" encoding="utf-8"?>
 </testsuites>
 """
 
+JUNIT_GROOVY_GREEN = """<?xml version="1.0" encoding="utf-8"?>
+<testsuites>
+  <testsuite name="groovy" errors="0" failures="0" skipped="0" tests="3" time="0.5">
+    <testcase classname="g" name="a"/>
+  </testsuite>
+</testsuites>
+"""
 
-def _evidence(base: Path, name: str, *, junit: bool = True, risks: list | None = None) -> Path:
+JUNIT_GROOVY_RED = """<?xml version="1.0" encoding="utf-8"?>
+<testsuites>
+  <testsuite name="groovy" errors="0" failures="2" skipped="0" tests="3" time="0.5">
+    <testcase classname="g" name="a">
+      <failure message="expected true, got false"/>
+    </testcase>
+  </testsuite>
+</testsuites>
+"""
+
+
+def _evidence(
+    base: Path,
+    name: str,
+    *,
+    junit: bool = True,
+    risks: list | None = None,
+    groovy: str | None = None,
+) -> Path:
     """
     Reproduces the layout created by `actions/download-artifact`:
 
@@ -51,6 +76,8 @@ def _evidence(base: Path, name: str, *, junit: bool = True, risks: list | None =
     (reports / "manifest.json").write_text(json.dumps(MANIFEST), encoding="utf-8")
     if junit:
         (reports / "junit.xml").write_text(JUNIT, encoding="utf-8")
+    if groovy is not None:
+        (reports / "junit-groovy.xml").write_text(groovy, encoding="utf-8")
     if risks is not None:
         (plans / "risks.json").write_text(json.dumps(risks), encoding="utf-8")
 
@@ -186,6 +213,42 @@ def test_body_ignores_an_invalid_manifest(tmp_path: Path):
     assert "| `FlowA` | - | - | - | - | - |" in body
 
 
+def test_body_includes_suggested_fixes_when_present(tmp_path: Path):
+    """
+    The suggested fixes are written only when the suite failed. They say what is
+    probably wrong in the iFlow, so they belong where the reviewer is looking.
+    """
+    _evidence(tmp_path, "results-Pacote-FlowA")
+    (tmp_path / "suggestions-SI_FlowA.md").write_text(
+        "### Suggested fixes for `SI_FlowA`\n\n"
+        "The Groovy condition script must navigate by local names.",
+        encoding="utf-8",
+    )
+
+    body = write_pr_body.build_body(tmp_path, None)
+
+    assert "Suggested fixes" in body
+    assert "navigate by local names" in body
+
+
+def test_body_omits_suggestions_when_absent(tmp_path: Path):
+    """A passing suite produces no suggestion file, and the body must not imply one."""
+    _evidence(tmp_path, "results-Pacote-FlowA")
+
+    body = write_pr_body.build_body(tmp_path, None)
+
+    assert "Suggested fixes" not in body
+
+
+def test_body_ignores_an_empty_suggestion_file(tmp_path: Path):
+    _evidence(tmp_path, "results-Pacote-FlowA")
+    (tmp_path / "suggestions-SI_FlowA.md").write_text("   \n", encoding="utf-8")
+
+    body = write_pr_body.build_body(tmp_path, None)
+
+    assert "Suggested fixes" not in body
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -227,3 +290,55 @@ def test_cli_missing_directory_returns_exit_2(tmp_path: Path):
 
     assert result.returncode == 2
     assert "not found" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# The Groovy harness column
+# ---------------------------------------------------------------------------
+
+
+def test_harness_column_reports_not_run_when_absent(tmp_path: Path):
+    """A pytest-only run has no harness verdict; say so instead of implying green."""
+    _evidence(tmp_path, "results-Pacote-FlowA")
+
+    body = write_pr_body.build_body(tmp_path, None)
+
+    assert "Groovy harness" in body
+    assert "| not run |" in body
+
+
+def test_harness_column_reports_a_green_run(tmp_path: Path):
+    _evidence(tmp_path, "results-Pacote-FlowA", groovy=JUNIT_GROOVY_GREEN)
+
+    body = write_pr_body.build_body(tmp_path, None)
+
+    assert "3 passed of 3" in body
+    assert "CAUTION" not in body
+
+
+def test_harness_failure_is_shouted_about(tmp_path: Path):
+    """
+    The suite is green while the real script is broken. Reporting pytest alone made
+    the body say "0 failed, 0 errors" for an iFlow whose script raised on every call,
+    so the failure gets its own prominent warning.
+    """
+    _evidence(tmp_path, "results-Pacote-FlowA", groovy=JUNIT_GROOVY_RED)
+
+    body = write_pr_body.build_body(tmp_path, None)
+
+    assert "**2 failed** of 3" in body
+    assert "CAUTION" in body
+    assert "The Groovy harness failed for `FlowA` (2)" in body
+
+
+def test_no_harness_warning_when_the_manifest_is_unreadable(tmp_path: Path):
+    """A broken manifest must not crash the body, nor silently drop the warning."""
+    artifact = tmp_path / "results-Pacote-FlowA" / "reports" / "Pacote" / "FlowA"
+    artifact.mkdir(parents=True)
+    (artifact / "manifest.json").write_text("{ invalid", encoding="utf-8")
+    (artifact / "junit-groovy.xml").write_text(JUNIT_GROOVY_RED, encoding="utf-8")
+
+    body = write_pr_body.build_body(tmp_path, None)
+
+    assert "CAUTION" in body
+    assert "`FlowA`" in body
