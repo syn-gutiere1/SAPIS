@@ -1,1 +1,202 @@
-<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="0" skipped="0" tests="7" time="0.188" timestamp="2026-10-15T04:22:58.914568+00:00" hostname="runnervm8k3b6"><testcase classname="CI-CD.tests.SI_Glovia_SalesOrderCreate.test_flow" name="test_payload_xml_structure_validity" time="0.001" /><testcase classname="CI-CD.tests.SI_Glovia_SalesOrderCreate.test_flow" name="test_happy_path_sales_order_route" time="0.002" /><testcase classname="CI-CD.tests.SI_Glovia_SalesOrderCreate.test_flow" name="test_return_sales_order_route" time="0.001" /><testcase classname="CI-CD.tests.SI_Glovia_SalesOrderCreate.test_flow" name="test_escalation_routing_condition_not_met" time="0.001" /><testcase classname="CI-CD.tests.SI_Glovia_SalesOrderCreate.test_flow" name="test_exception_subprocess_trigger_and_logging" time="0.001" /><testcase classname="CI-CD.tests.SI_Glovia_SalesOrderCreate.test_flow" name="test_corrupt_inbound_xml_handling" time="0.001" /><testcase classname="CI-CD.tests.SI_Glovia_SalesOrderCreate.test_flow" name="test_network_timeout_resilience" time="0.001" /></testsuite></testsuites>
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="4" skipped="0" tests="5" time="0.606" timestamp="2026-10-15T08:18:12.709856+00:00" hostname="runnervmmprz5"><testcase classname="CI-CD.tests.SI_Glovia_SalesOrderCreate.test_flow" name="test_happy_path_sales_order" time="0.002"><failure message="TypeError: mock_cpi_pipeline_dispatch() got an unexpected keyword argument 'timeout'">flow_client = &lt;test_flow.FlowExecutionEngine object at 0x7fa6a937a0c0&gt;
+payload_sales_order = '&lt;?xml version="1.0" encoding="UTF-8"?&gt;&lt;SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/"&gt;&lt;SOAP:Bod...c&gt;Sales Order&lt;/ns2:giic_OrderType__c&gt;&lt;/ns1:sObject&gt;&lt;/ns1:Notification&gt;&lt;/ns1:notifications&gt;&lt;/SOAP:Body&gt;&lt;/SOAP:Envelope&gt;'
+
+    def test_happy_path_sales_order(flow_client, payload_sales_order):
+        """Assert standard SalesOrder message follows mapping route to EndEvent_2."""
+        custom_headers = {
+            "Region": "EMEA",
+            "Country": "DE",
+            "Sender": "Glovia_ERP"
+        }
+        with unittest.mock.patch.object(requests.Session, "send", side_effect=mock_cpi_pipeline_dispatch):
+&gt;           response = flow_client.execute(payload_sales_order, headers=custom_headers)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+CI-CD/tests/SI_Glovia_SalesOrderCreate/test_flow.py:181: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+CI-CD/tests/SI_Glovia_SalesOrderCreate/test_flow.py:27: in execute
+    return self.session.post(self.endpoint_url, data=payload, headers=req_headers)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/requests/sessions.py:712: in post
+    return self.request("POST", url, data=data, json=json, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/requests/sessions.py:651: in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/unittest/mock.py:1139: in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/unittest/mock.py:1143: in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;MagicMock name='send' id='140353780366128'&gt;
+args = (&lt;PreparedRequest [POST]&gt;,)
+kwargs = {'timeout': None, 'allow_redirects': True, 'proxies': OrderedDict(), 'stream': False, ...}
+
+    def _execute_mock_call(self, /, *args, **kwargs):
+        # separate from _increment_mock_call so that awaited functions are
+        # executed separately from their call, also AsyncMock overrides this method
+    
+        effect = self.side_effect
+        if effect is not None:
+            if _is_exception(effect):
+                raise effect
+            elif not _callable(effect):
+                result = next(effect)
+                if _is_exception(result):
+                    raise result
+            else:
+&gt;               result = effect(*args, **kwargs)
+                         ^^^^^^^^^^^^^^^^^^^^^^^
+E               TypeError: mock_cpi_pipeline_dispatch() got an unexpected keyword argument 'timeout'
+
+/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/unittest/mock.py:1204: TypeError</failure></testcase><testcase classname="CI-CD.tests.SI_Glovia_SalesOrderCreate.test_flow" name="test_happy_path_return_sales_order" time="0.001"><failure message="TypeError: mock_cpi_pipeline_dispatch() got an unexpected keyword argument 'timeout'">flow_client = &lt;test_flow.FlowExecutionEngine object at 0x7fa6a943e2a0&gt;
+payload_so_return = '&lt;?xml version="1.0" encoding="UTF-8"?&gt;&lt;SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/"&gt;&lt;SOAP:Bod...&gt;Return Order&lt;/ns2:giic_OrderType__c&gt;&lt;/ns1:sObject&gt;&lt;/ns1:Notification&gt;&lt;/ns1:notifications&gt;&lt;/SOAP:Body&gt;&lt;/SOAP:Envelope&gt;'
+
+    def test_happy_path_return_sales_order(flow_client, payload_so_return):
+        """Assert Return SalesOrder message routes through SO Return branch to EndEvent_9."""
+        with unittest.mock.patch.object(requests.Session, "send", side_effect=mock_cpi_pipeline_dispatch):
+&gt;           response = flow_client.execute(payload_so_return)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+CI-CD/tests/SI_Glovia_SalesOrderCreate/test_flow.py:195: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+CI-CD/tests/SI_Glovia_SalesOrderCreate/test_flow.py:27: in execute
+    return self.session.post(self.endpoint_url, data=payload, headers=req_headers)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/requests/sessions.py:712: in post
+    return self.request("POST", url, data=data, json=json, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/requests/sessions.py:651: in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/unittest/mock.py:1139: in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/unittest/mock.py:1143: in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;MagicMock name='send' id='140353781102016'&gt;
+args = (&lt;PreparedRequest [POST]&gt;,)
+kwargs = {'timeout': None, 'allow_redirects': True, 'proxies': OrderedDict(), 'stream': False, ...}
+
+    def _execute_mock_call(self, /, *args, **kwargs):
+        # separate from _increment_mock_call so that awaited functions are
+        # executed separately from their call, also AsyncMock overrides this method
+    
+        effect = self.side_effect
+        if effect is not None:
+            if _is_exception(effect):
+                raise effect
+            elif not _callable(effect):
+                result = next(effect)
+                if _is_exception(result):
+                    raise result
+            else:
+&gt;               result = effect(*args, **kwargs)
+                         ^^^^^^^^^^^^^^^^^^^^^^^
+E               TypeError: mock_cpi_pipeline_dispatch() got an unexpected keyword argument 'timeout'
+
+/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/unittest/mock.py:1204: TypeError</failure></testcase><testcase classname="CI-CD.tests.SI_Glovia_SalesOrderCreate.test_flow" name="test_default_route_escalation" time="0.001"><failure message="TypeError: mock_cpi_pipeline_dispatch() got an unexpected keyword argument 'timeout'">flow_client = &lt;test_flow.FlowExecutionEngine object at 0x7fa6a946b230&gt;
+payload_unmatched = '&lt;?xml version="1.0" encoding="UTF-8"?&gt;&lt;SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/"&gt;&lt;SOAP:Bod...pe__c&gt;Unknown&lt;/ns2:giic_OrderType__c&gt;&lt;/ns1:sObject&gt;&lt;/ns1:Notification&gt;&lt;/ns1:notifications&gt;&lt;/SOAP:Body&gt;&lt;/SOAP:Envelope&gt;'
+
+    def test_default_route_escalation(flow_client, payload_unmatched):
+        """Assert unhandled order type falls back to default route triggering EscalationEndEvent."""
+        with unittest.mock.patch.object(requests.Session, "send", side_effect=mock_cpi_pipeline_dispatch):
+&gt;           response = flow_client.execute(payload_unmatched)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+CI-CD/tests/SI_Glovia_SalesOrderCreate/test_flow.py:207: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+CI-CD/tests/SI_Glovia_SalesOrderCreate/test_flow.py:27: in execute
+    return self.session.post(self.endpoint_url, data=payload, headers=req_headers)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/requests/sessions.py:712: in post
+    return self.request("POST", url, data=data, json=json, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/requests/sessions.py:651: in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/unittest/mock.py:1139: in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/unittest/mock.py:1143: in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;MagicMock name='send' id='140353781280176'&gt;
+args = (&lt;PreparedRequest [POST]&gt;,)
+kwargs = {'timeout': None, 'allow_redirects': True, 'proxies': OrderedDict(), 'stream': False, ...}
+
+    def _execute_mock_call(self, /, *args, **kwargs):
+        # separate from _increment_mock_call so that awaited functions are
+        # executed separately from their call, also AsyncMock overrides this method
+    
+        effect = self.side_effect
+        if effect is not None:
+            if _is_exception(effect):
+                raise effect
+            elif not _callable(effect):
+                result = next(effect)
+                if _is_exception(result):
+                    raise result
+            else:
+&gt;               result = effect(*args, **kwargs)
+                         ^^^^^^^^^^^^^^^^^^^^^^^
+E               TypeError: mock_cpi_pipeline_dispatch() got an unexpected keyword argument 'timeout'
+
+/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/unittest/mock.py:1204: TypeError</failure></testcase><testcase classname="CI-CD.tests.SI_Glovia_SalesOrderCreate.test_flow" name="test_exception_subprocess_execution" time="0.001"><failure message="TypeError: mock_cpi_pipeline_dispatch() got an unexpected keyword argument 'timeout'">flow_client = &lt;test_flow.FlowExecutionEngine object at 0x7fa6a943ed20&gt;
+payload_malformed = '&lt;SOAP:Envelope&gt;&lt;SOAP:Body&gt;&lt;unclosed&gt;'
+
+    def test_exception_subprocess_execution(flow_client, payload_malformed):
+        """Assert malformed payload triggers SubProcess_91, restores payload, and ends at EndEvent_95."""
+        with unittest.mock.patch.object(requests.Session, "send", side_effect=mock_cpi_pipeline_dispatch):
+&gt;           response = flow_client.execute(payload_malformed)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+CI-CD/tests/SI_Glovia_SalesOrderCreate/test_flow.py:220: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+CI-CD/tests/SI_Glovia_SalesOrderCreate/test_flow.py:27: in execute
+    return self.session.post(self.endpoint_url, data=payload, headers=req_headers)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/requests/sessions.py:712: in post
+    return self.request("POST", url, data=data, json=json, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/requests/sessions.py:651: in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/unittest/mock.py:1139: in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/unittest/mock.py:1143: in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;MagicMock name='send' id='140353781100144'&gt;
+args = (&lt;PreparedRequest [POST]&gt;,)
+kwargs = {'timeout': None, 'allow_redirects': True, 'proxies': OrderedDict(), 'stream': False, ...}
+
+    def _execute_mock_call(self, /, *args, **kwargs):
+        # separate from _increment_mock_call so that awaited functions are
+        # executed separately from their call, also AsyncMock overrides this method
+    
+        effect = self.side_effect
+        if effect is not None:
+            if _is_exception(effect):
+                raise effect
+            elif not _callable(effect):
+                result = next(effect)
+                if _is_exception(result):
+                    raise result
+            else:
+&gt;               result = effect(*args, **kwargs)
+                         ^^^^^^^^^^^^^^^^^^^^^^^
+E               TypeError: mock_cpi_pipeline_dispatch() got an unexpected keyword argument 'timeout'
+
+/opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/unittest/mock.py:1204: TypeError</failure></testcase><testcase classname="CI-CD.tests.SI_Glovia_SalesOrderCreate.test_flow" name="test_network_failure_handling" time="0.001" /></testsuite></testsuites>

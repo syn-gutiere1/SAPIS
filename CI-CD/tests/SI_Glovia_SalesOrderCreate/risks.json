@@ -1,22 +1,22 @@
 [
   {
-    "risk": "Message Loss via Escalation End Event without Sender Notification",
-    "consequence": "The ExclusiveGateway_80 routes non-matching order types to EndEvent_11 (Escalation End) without an alert adapter or dead-letter queue. The sender system (Glovia) will not receive an error callback because returnExceptionToSender is set to false.",
-    "mitigation": "Unit tests TC_GLOVIA_003 and TC_GLOVIA_005 assert on the Escalation Code RoutingConditionNotMet. Mitigation requires adding an alert notification step or Dead Letter Queue (JMS) write before EndEvent_11."
+    "risk": "Message payload loss during exception handling in SubProcess_91",
+    "consequence": "If CallActivity_4 fails before setting 'InputPayload' property, CallActivity_97 reads null, causing Log_Payload to log empty data and obscuring root cause analysis.",
+    "mitigation": "Unit tests assert that CallActivity_4 sets ${in.body} into property.InputPayload immediately at process start, and test_exception_subprocess_execution verifies payload restoration."
   },
   {
-    "risk": "Unconnected / Floating Groovy Script Logic in Integration Process",
-    "consequence": "Script CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) and Content Modifier CallActivity_86 are defined inside Process_1 but have no incoming or outgoing sequence flows. Valid order codes ('YORB', 'YICB', 'POR', 'MNZ', 'PLM') checked by the script are never evaluated by the active router.",
-    "mitigation": "Test suite validates routing conditions directly against runtime gateway expressions. The integration architecture must be updated to either wire CallActivity_77 into the sequence flow before ExclusiveGateway_80 or remove obsolete elements."
+    "risk": "Silent message termination without alerting on routing escalation",
+    "consequence": "Messages meeting neither SalesOrder nor SO Return criteria route to EndEvent_11 (EscalationEndEvent); without monitoring on EscalationCode 'RoutingConditionNotMet', order drops unnoticed.",
+    "mitigation": "Scenario SCN-GLOVIA-003 and test_default_route_escalation validate that the escalation error code is explicitly emitted and HTTP status/alerts are captured."
   },
   {
-    "risk": "Mapping Failure during Schema Evolution",
-    "consequence": "If Glovia changes payload fields, Message Mapping CallActivity_102 (Test_Mapping.mmap) fails. Although SubProcess_91 logs the payload via Log_Payload (1).gsh, the message is unretrievable if MPL retention expires.",
-    "mitigation": "TC_GLOVIA_004 validates that CallActivity_97 reads ${property.InputPayload} and logs it as an attachment, preventing loss of the inbound request body during failure diagnosis."
+    "risk": "Orphaned or unlinked activities (CallActivity_77 and CallActivity_86)",
+    "consequence": "The BPMN definitions contain CallActivity_77 (GLOVIA_Conditioncheck) and CallActivity_86 (XPath extraction) outside normal sequence flows, risking dead code deployment and logic drift.",
+    "mitigation": "Unit test suite verifies routing conditions against known code sets ('YORB', 'YICB', 'POR', 'MNZ', 'PLM') directly and highlights unlinked activities in coverage reporting."
   },
   {
-    "risk": "Parallel Gateway Misconfiguration",
-    "consequence": "ParallelGateway_74 has only a single outgoing branch (SequenceFlow_109) in the BPMN XML, creating an unnecessary multicast overhead and potential race condition if additional asynchronous branches are attached in the future without join semantics.",
-    "mitigation": "Test cases assert single-threaded sequential path execution from ParallelGateway_74 directly into ExclusiveGateway_80."
+    "risk": "SOAP sender adapter parameter mismatches and security exceptions",
+    "consequence": "The inbound SOAP adapter specifies WSSecurity 'VerifyMessage' with SHA1 and RoleBased auth. Inbound requests with missing signatures or unauthorized roles are rejected at runtime.",
+    "mitigation": "Integration contract tests mock SOAP security verification headers and simulate auth boundaries prior to downstream execution."
   }
 ]
