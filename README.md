@@ -320,11 +320,13 @@ every run, so fixtures kept there are deleted before the harness can read them.
 | `--require-fixtures` | fail when a script has no reviewed fixture |
 
 Both extensions are executed because SAP CPI uses either one for a Groovy script.
-Scanning only `.groovy` left `Log_Payload (1).gsh` - a script the `.iflw` actually
-calls - with no coverage, which is the same class of blindness the harness exists to
-remove. A fixture folder is named after the script with anything outside
-`[A-Za-z0-9._-]` replaced by `_`, so that script maps to `Log_Payload__1_`; the
-harness prints the folder to create when one is missing.
+Scanning only `.groovy` left `Log_Payload.gsh` - a script the `.iflw` actually calls -
+with no coverage, which is the same class of blindness the harness exists to remove.
+
+A fixture folder is named after the script with anything outside `[A-Za-z0-9._-]`
+replaced by `_`. SAP can hand us an awkward name - a duplicate download lands as
+`My Script (1).gsh`, which maps to `My_Script__1_` - so the harness prints the folder to
+create when one is missing, because the mapping is not guessable.
 
 Exit codes: `0` all passed, `1` some failure or a pending fixture, `2` invalid usage.
 

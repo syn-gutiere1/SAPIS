@@ -17,12 +17,12 @@
  *          [--filter <substring>]
  *
  * Both `.groovy` and `.gsh` are executed: SAP CPI uses either extension for a Groovy
- * script. Scanning only `.groovy` left a production script named
- * `Log_Payload (1).gsh` with no coverage at all.
+ * script, and scanning only `.groovy` left a real script with no coverage at all.
  *
  * Fixtures live in a folder per script, named after the script without its extension
- * and sanitised to [A-Za-z0-9._-]: `Log_Payload (1).gsh` -> `Log_Payload__1_`. When a
- * script has no fixtures the harness prints the folder name to create.
+ * and sanitised to [A-Za-z0-9._-]: a script called `My Script (1).gsh` maps to
+ * `My_Script__1_`. The harness prints the folder name to create when one is missing,
+ * because the mapping is not guessable.
  *
  * File convention in --testdata:
  *
@@ -97,8 +97,8 @@ Map parseArgs(String[] argv) {
  *
  * SAP CPI keeps Groovy scripts in the artifact as `.groovy` or `.gsh`, and both are
  * the same language with the same runtime contract. Scanning only `.groovy` left a
- * real production script (`Log_Payload (1).gsh`, referenced by the `.iflw`) with no
- * coverage at all - the same class of blindness this harness exists to remove.
+ * real production script, referenced by the `.iflw`, with no coverage at all - the
+ * same class of blindness this harness exists to remove.
  *
  * Declared inside the method rather than as a static field: a static method in a
  * Groovy script cannot see a static field of the script class.
@@ -114,7 +114,7 @@ static boolean isScriptFile(File file) {
     return scriptExtensions().any { lower.endsWith(it) }
 }
 
-/** The script name without its extension: `Log_Payload (1).gsh` -> `Log_Payload (1)`. */
+/** The script name without its extension: `My Script (1).gsh` -> `My Script (1)`. */
 static String scriptBaseName(File scriptFile) {
     def name = scriptFile.name
     def dot = name.lastIndexOf('.')
@@ -124,10 +124,10 @@ static String scriptBaseName(File scriptFile) {
 /**
  * The fixture directory name for a script.
  *
- * The base name alone is not safe: a real artifact contains `Log_Payload (1).gsh`,
- * and a directory with spaces and parentheses is awkward to pass around and to match.
- * Anything outside `[A-Za-z0-9._-]` becomes `_`, so that script maps to
- * `Log_Payload__1_`. The mapping is deterministic, so the name to create is never a
+ * The base name alone is not safe: SAP can hand us a script whose name carries spaces
+ * or parentheses, and a directory with those is awkward to pass around and to match.
+ * Anything outside `[A-Za-z0-9._-]` becomes `_`, so `My Script (1).gsh` maps to
+ * `My_Script__1_`. The mapping is deterministic, so the name to create is never a
  * guess.
  */
 static String fixtureDirName(File scriptFile) {
@@ -239,7 +239,7 @@ scripts.each { scriptFile ->
     // `--testdata` itself, which is validated before this loop. So "the directory is
     // missing" cannot happen here - the real case is "there is no payload for this
     // script", handled below. The sanitised folder name belongs in that message,
-    // because `Log_Payload (1).gsh` maps to `Log_Payload__1_` and is not guessable.
+    // because a name like `My Script (1).gsh` maps to `My_Script__1_`.
     def fixturesDir = fixturesDirFor(testdataDir, scriptFile)
 
     // Payloads are included; the assertion and injection sidecars are not.
@@ -380,7 +380,7 @@ scripts.each { scriptFile ->
             }
 
             // Attachments written through the MessageLog stub. A script such as
-            // `Log_Payload (1).gsh` exists only to attach the payload, so without this
+            // The payload logger exists only to attach the body, so without this check
             // the only thing checked about it would be that it did not throw.
             if (expectations.attachments) {
                 def recorded = logFactory.getRecordedLog()

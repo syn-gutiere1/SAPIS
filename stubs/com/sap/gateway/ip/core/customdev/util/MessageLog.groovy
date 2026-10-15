@@ -34,8 +34,8 @@ class MessageLog {
     /**
      * The overload the real scripts use to attach a string.
      *
-     * `Log_Payload (1).gsh` calls `addAttachmentAsString("Payload", body, "text/plain")`.
-     * Without this method the script could not run under the harness at all, so the
+     * A real iFlow script calls `addAttachmentAsString("Payload", body, "text/plain")`.
+     * Without this method that script could not run under the harness at all, so the
      * attachment content is recorded and exposed for assertions.
      */
     void addAttachmentAsString(String name, String content, String contentType) {
