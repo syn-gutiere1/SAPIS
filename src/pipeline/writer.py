@@ -23,6 +23,8 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from pipeline import extract as _extract
+
 # Extensions accepted for the test fixtures. Whitelist: anything else is
 # rejected, instead of being written.
 ALLOWED_TESTDATA_SUFFIXES = {
@@ -225,6 +227,7 @@ def write_test_package(
     out_dir: str | Path,
     *,
     clean: bool = True,
+    flow_xml: str | None = None,
 ) -> dict[str, Any]:
     """
     Writes the artifacts from the model and returns a summary of what was written.
@@ -234,7 +237,8 @@ def write_test_package(
         testdata/*          fixtures used by the tests
         test_flow.py        pytest suite
         risks.json          identified risks
-        coverage.json       coverage analysis estimated by the model
+        coverage.json       coverage analysis of the model, plus the reachability of the
+                            artifact's BPMN elements, which is computed here
         raw_llm_output.json full model response (audit)
     """
     out_dir = Path(out_dir)
@@ -298,9 +302,20 @@ def write_test_package(
     )
     written.append("risks.json")
 
-    # --- coverage (estimate from the model) -------------------------------
+    # --- coverage ---------------------------------------------------------
+    # The model estimates the percentages; the reachability of the BPMN elements is
+    # computed from the artifact and merged in. An element wired to nothing is at 0 %
+    # whatever the model says, and leaving that to the model meant a real 0 % entry
+    # appeared in one generation and vanished in the next.
     coverage = find_key(package, ["coverage"])
+    if coverage is None and flow_xml:
+        coverage = {}
     if coverage is not None:
+        if flow_xml:
+            try:
+                coverage = _extract.merge_unreachable(coverage, flow_xml)
+            except Exception:  # noqa: BLE001 - never lose the model's own report
+                pass
         (out_dir / "coverage.json").write_text(
             json.dumps(coverage, ensure_ascii=False, indent=2), encoding="utf-8"
         )

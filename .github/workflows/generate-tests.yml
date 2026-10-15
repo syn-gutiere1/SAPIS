@@ -494,6 +494,7 @@ jobs:
             --context "$REPORTS_DIR/failure_context.md" \
             --logs "$REPORTS_DIR/failure_logs.txt" \
             --risks "$PLANS_DIR/risks.json" \
+            --coverage "$PLANS_DIR/coverage.json" \
             --suggestions "$REPORTS_DIR/ai_fix_suggestions.md"
 
       # Gated on the file existing, not on `steps.suggestions.outcome`: that step keeps

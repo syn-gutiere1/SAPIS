@@ -257,9 +257,12 @@ def _cmd_generate(args: argparse.Namespace) -> int:
     if result.truncated:
         print(f"[WARNING] Content truncated before sending: {', '.join(result.truncated)}")
 
-    # 5) Write the artifacts
+    # 5) Write the artifacts. The XML is passed so the coverage report can include the
+    # reachability of the BPMN elements, which is computed rather than asked of the model.
     try:
-        write_summary = writer_mod.write_test_package(result.package, out_dir)
+        write_summary = writer_mod.write_test_package(
+            result.package, out_dir, flow_xml=flow_xml
+        )
     except writer_mod.WriteError as exc:
         print(f"[ERROR] Failure writing the artifacts: {exc}", file=sys.stderr)
         return EXIT_CONFIG
@@ -357,15 +360,37 @@ def _cmd_analyze_failures(args: argparse.Namespace) -> int:
                     file=sys.stderr,
                 )
 
+    # The coverage report, which carries the uncovered paths and the components below
+    # 100 %. Those deserve the same treatment as the risks: a concrete way to close them.
+    coverage = None
+    if args.coverage:
+        coverage_path = Path(args.coverage)
+        if coverage_path.is_file():
+            try:
+                coverage = json.loads(coverage_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                print(
+                    f"[WARN] Could not parse {coverage_path}; continuing without it.",
+                    file=sys.stderr,
+                )
+
     iflow_name = iflow_file.stem if iflow_file else Path(args.source).stem
+    n_riscos = len(risks) if isinstance(risks, list) else 0
+    n_gaps = len(coverage.get("uncovered_paths") or []) if isinstance(coverage, dict) else 0
     print(
-        f"[1/2] Analysing the failure log for {iflow_name} "
-        f"({len(test_output)} chars, {len(risks) if isinstance(risks, list) else 0} risk(s))"
+        f"[1/2] Analysing {iflow_name} "
+        f"({len(test_output)} chars of log, {n_riscos} risk(s), {n_gaps} coverage gap(s))"
     )
 
     try:
         suggestion = portkey_mod.suggest_fixes(
-            flow_xml, scripts, test_output, context=context, risks=risks, settings=settings
+            flow_xml,
+            scripts,
+            test_output,
+            context=context,
+            risks=risks,
+            coverage=coverage,
+            settings=settings,
         )
     except portkey_mod.ConfigError as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)
@@ -442,6 +467,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Path to risks.json (analyze-failures mode). Sent to the model so it can close "
             "the answer with a `Fix Risks` section."
+        ),
+    )
+    parser.add_argument(
+        "--coverage",
+        default=None,
+        help=(
+            "Path to coverage.json (analyze-failures mode). Its uncovered paths and "
+            "components below 100% are sent to the model, which closes with `Fix Coverage`."
         ),
     )
     parser.add_argument(
