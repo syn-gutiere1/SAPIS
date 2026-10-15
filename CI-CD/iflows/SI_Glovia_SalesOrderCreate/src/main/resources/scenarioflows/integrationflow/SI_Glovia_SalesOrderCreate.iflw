@@ -898,5 +898,6 @@
             </bpmndi:BPMNEdge>
         </bpmndi:BPMNPlane>
     </bpmndi:BPMNDiagram>
-<!-- dashboard validation -->
+
+<!-- validate suggestions on a green run -->
 </bpmn2:definitions>
