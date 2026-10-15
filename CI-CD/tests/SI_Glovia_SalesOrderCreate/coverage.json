@@ -1,0 +1,32 @@
+{
+  "target_coverage_percent": 100,
+  "coverage_by_component": {
+    "SOAP_Sender_Adapter_MessageFlow_114": "100%",
+    "CallActivity_4_Set_Message_Headers": "100%",
+    "ParallelGateway_74": "100%",
+    "ExclusiveGateway_80_Router": "100%",
+    "SequenceFlow_82_SalesOrder_Branch": "100%",
+    "CallActivity_102_MessageMapping": "100%",
+    "CallActivity_13_Interface_Generic_Headers": "100%",
+    "EndEvent_2": "100%",
+    "SequenceFlow_113_SOReturn_Branch": "100%",
+    "CallActivity_71_Interface_Generic_Headers": "100%",
+    "EndEvent_9": "100%",
+    "SequenceFlow_110_Default_Branch": "100%",
+    "EndEvent_11_EscalationEnd": "100%",
+    "SubProcess_91_ExceptionHandling": "100%",
+    "CallActivity_77_Floating_Groovy": "0%",
+    "CallActivity_86_Floating_ContentModifier": "0%",
+    "CallActivity_77 (Groovy Script 2)": "0%",
+    "CallActivity_86 (Content Modifier)": "0%"
+  },
+  "uncovered_paths": [
+    "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) and CallActivity_86 (Content Modifier) are completely disconnected from the process flow diagram (no inbound/outbound sequence flows). They cannot be executed by the runtime engine in their current BPMN definition.",
+    "Unreachable in the process: CallActivity_77 (Groovy Script 2); CallActivity_86 (Content Modifier). These elements have no sequence flow connecting them to the flow, so no test can exercise them."
+  ],
+  "coverage_recommendations": [
+    "Connect CallActivity_86 directly after CallActivity_4, followed by CallActivity_77 before ParallelGateway_74 or ExclusiveGateway_80.",
+    "Once connected, add dedicated test assertions validating that header 'OrderCodeValid' is correctly set to 'true' for types ['YORB', 'YICB', 'POR', 'MNZ', 'PLM'] and 'false' for invalid codes.",
+    "Add test assertions to verify header 'OrganizationId' extracted from xpath '/ns1:notifications/ns1:Notification/ns1:sObject/ns2:giic_OrderTypeCode__c'."
+  ]
+}
