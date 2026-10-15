@@ -264,19 +264,24 @@ jobs:
       - name: Run pytest
         id: pytest
         run: |
-          set -uo pipefail
+          # `pipefail` is set only for the pytest pipeline below, never for the step as
+          # a whole: it aborts the script on any non-zero command, which skipped the
+          # marker bookkeeping and once made a stale marker decide the verdict.
+          set -u
           mkdir -p "$REPORTS_DIR"
           rm -f "$REPORTS_DIR/pytest-failed"
 
           # A generated suite that imports an undeclared package fails at collection;
           # the log is kept either way for the summary. `tee` would mask the exit status,
           # so it is read from PIPESTATUS.
+          set -o pipefail
           timeout 1800 python -m pytest "$TESTS_DIR" -v \
             --self-contained-html \
             --html="$REPORTS_DIR/report.html" \
             --junitxml="$REPORTS_DIR/junit.xml" \
             2>&1 | tee "$REPORTS_DIR/pytest_logs.txt"
           PYTEST_STATUS="${PIPESTATUS[0]}"
+          set +o pipefail
 
           if [ "$PYTEST_STATUS" -ne 0 ]; then
             # A marker file, not `steps.pytest.conclusion`. The steps context did not
@@ -324,7 +329,7 @@ jobs:
         id: groovy
         if: matrix.has_iflow_change || contains(join(matrix.changed_files, ' '), '/script/')
         run: |
-          set -o pipefail
+          set -u
           mkdir -p "$REPORTS_DIR"
 
           # The script folder is derived from the artifact layout. `script/` is a
@@ -371,12 +376,14 @@ jobs:
 
           echo "Scripts: $SCRIPT_DIR"
           rm -f "$REPORTS_DIR/groovy-failed"
+          set -o pipefail
           groovy -cp stubs groovy-harness/TestHarness.groovy \
             --scan-all "$SCRIPT_DIR" \
             --testdata "$GROOVY_TESTDATA" \
             --junit "$REPORTS_DIR/junit-groovy.xml" \
             2>&1 | tee "$REPORTS_DIR/groovy_logs.txt"
           GROOVY_STATUS="${PIPESTATUS[0]}"
+          set +o pipefail
 
           if [ "$GROOVY_STATUS" -ne 0 ]; then
             # A marker file, for the same reason as in the pytest step: the steps
@@ -592,6 +599,10 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
+          # `set -u` only. No `pipefail`: the `find` commands are best-effort and a
+          # non-zero from one of them aborted this step before the marker bookkeeping,
+          # which is how a stale marker survived to decide the verdict.
+          set -u
           find "$TESTS_DIR" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
           find "$TESTS_DIR" -type d -name .pytest_cache -prune -exec rm -rf {} + 2>/dev/null || true
 
