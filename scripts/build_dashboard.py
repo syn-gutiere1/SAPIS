@@ -338,45 +338,83 @@ def _render_provenance(manifest) -> str:
     return warning + _kv_rows(pairs) + rejected_html
 
 
+# The sections the model is asked to close its answer with. Each gets its own heading, so
+# the guidance is not buried in the tail of a long document.
+_SUGGESTION_SECTIONS = (
+    (
+        "fix risks",
+        "fix-risks",
+        "Fix Risks",
+        "How to fix or mitigate each risk listed in the Risks tab.",
+    ),
+    (
+        "fix coverage",
+        "fix-coverage",
+        "Fix Coverage",
+        "How to cover every item below 100% and every uncovered path in the Coverage tab.",
+    ),
+)
+
+
 def _render_suggestions(text: str | None) -> str:
     if not text or not text.strip():
         return (
-            '<p class="muted">No suggested fixes for this run. The file is produced only '
-            "when the generated suite fails.</p>"
+            '<p class="muted">No suggested fixes for this run. The analysis runs on every '
+            "run, so an empty file means the model call failed.</p>"
         )
 
     body = text.strip()
 
-    # The answer ends with how to fix or mitigate each identified risk. That half is the
-    # one a reviewer acts on after the immediate failure is handled, so it gets its own
-    # heading instead of being buried in the tail of a long document.
-    #
-    # Matched case-insensitively: the model is asked for `## Fix Risks` but may vary the
-    # casing, and a missed match would silently leave the section unstyled.
-    parts = re.split(r"^\s*##\s+fix risks\s*$", body, maxsplit=1, flags=re.IGNORECASE | re.MULTILINE)
-    if len(parts) == 1:
-        return (
-            '<pre class="prose">'
-            f"{_esc(body)}</pre>"
-            '<p class="muted">This answer carries no <code>Fix Risks</code> section. The '
-            "model is asked for one; its absence is worth reporting.</p>"
+    # Split on any of the section headings, keeping each heading with its content. Matched
+    # case-insensitively: the model is asked for the exact titles but may vary the casing,
+    # and a missed match would leave a section unstyled and unfindable.
+    pieces = re.split(
+        r"^\s*##\s+(fix risks|fix coverage)\s*$",
+        body,
+        flags=re.IGNORECASE | re.MULTILINE,
+    )
+
+    analysis = (pieces[0] or "").rstrip()
+    # The file is markdown produced by a model, rendered as preformatted text on purpose:
+    # no markdown engine, no raw HTML injection into the page.
+    html = f'<pre class="prose">{_esc(analysis)}</pre>' if analysis else ""
+
+    found: list[str] = []
+    index = 1
+    while index < len(pieces):
+        title = (pieces[index] or "").strip().lower()
+        content = (pieces[index + 1] if index + 1 < len(pieces) else "").strip()
+        index += 2
+
+        match = next((item for item in _SUGGESTION_SECTIONS if item[0] == title), None)
+        if match is None:
+            continue
+
+        _, ident, label, description = match
+        found.append(label)
+
+        html += f'<h4 id="{ident}">{_esc(label)}</h4>'
+        html += (
+            f'<p class="sub">{_esc(description)} '
+            "Advisory: verify against the artifact before changing anything.</p>"
+        )
+        if content:
+            html += f'<pre class="prose">{_esc(content)}</pre>'
+        else:
+            html += (
+                '<p class="muted">The model opened the section but wrote no guidance.</p>'
+            )
+
+    missing = [label for _, _, label, _ in _SUGGESTION_SECTIONS if label not in found]
+    if missing:
+        nomes = " and ".join(f"<code>{_esc(name)}</code>" for name in missing)
+        html += (
+            f'<p class="muted">This answer carries no {nomes} section, though the model '
+            "is asked for it; the absence is worth reporting.</p>"
         )
 
-    analysis, fixes = parts[0].rstrip(), parts[1].strip()
-
-    # The file is markdown produced by a model. Both halves are rendered as preformatted
-    # text on purpose: no markdown engine, no raw HTML injection into the page.
-    html = f'<pre class="prose">{_esc(analysis)}</pre>'
-    html += '<h4 id="fix-risks">Fix Risks</h4>'
-    html += (
-        '<p class="sub">How to fix or mitigate each risk listed in the Risks tab. '
-        "Advisory: verify against the artifact before changing anything.</p>"
-    )
-    if fixes:
-        html += f'<pre class="prose">{_esc(fixes)}</pre>'
-    else:
-        html += '<p class="muted">The model opened the section but wrote no guidance.</p>'
     return html
+
 
 
 # ---------------------------------------------------------------------------

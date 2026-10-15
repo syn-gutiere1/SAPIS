@@ -321,3 +321,96 @@ def scrub(text: str) -> str:
     for pattern, replacement in SECRET_PATTERNS:
         text = pattern.sub(replacement, text)
     return text
+
+
+# ---------------------------------------------------------------------------
+# Reachability
+# ---------------------------------------------------------------------------
+
+_BPMN_NODE = re.compile(
+    r"<bpmn2:(startEvent|endEvent|callActivity|serviceTask|scriptTask|exclusiveGateway"
+    r"|parallelGateway|inclusiveGateway|intermediateCatchEvent|subProcess|task)"
+    r"\b([^>]*)>"
+)
+
+
+def find_unreachable(flow_xml: str) -> list[dict[str, str]]:
+    """
+    BPMN elements wired to nothing, derived from the artifact.
+
+    An element with no incoming sequence flow cannot be reached, except a start event;
+    one with no outgoing flow terminates, except an end event. Either way the element is
+    not part of the executing process.
+
+    This is computed rather than left to the model. `coverage.json` reported such
+    elements in one generation and omitted them in the next, so a real 0 % entry came and
+    went with the weather. Counting the sequence flows is deterministic: the same
+    artifact always produces the same list.
+
+    Returns `[{"id": ..., "name": ..., "element": ...}, ...]`, sorted by id.
+    """
+    found: dict[str, dict[str, str]] = {}
+
+    for match in _BPMN_NODE.finditer(flow_xml):
+        tag, attrs = match.group(1), match.group(2)
+        ident = re.search(r'id="([^"]+)"', attrs)
+        if not ident:
+            continue
+
+        # Connectivity lives inside the element, up to its closing tag.
+        body = flow_xml[match.end() : match.end() + 4000]
+        close = body.find(f"</bpmn2:{tag}>")
+        if close != -1:
+            body = body[:close]
+
+        incoming = re.findall(r"<bpmn2:incoming>([^<]+)</bpmn2:incoming>", body)
+        outgoing = re.findall(r"<bpmn2:outgoing>([^<]+)</bpmn2:outgoing>", body)
+
+        unreachable = (not incoming and tag != "startEvent") or (
+            not outgoing and tag != "endEvent"
+        )
+        if not unreachable:
+            continue
+
+        name = re.search(r'name="([^"]*)"', attrs)
+        found[ident.group(1)] = {
+            "id": ident.group(1),
+            "name": (name.group(1) if name else "").strip(),
+            "element": tag,
+        }
+
+    return [found[key] for key in sorted(found)]
+
+
+def merge_unreachable(coverage, flow_xml: str) -> dict:
+    """
+    Fold the reachability finding into the coverage report.
+
+    The unreachable elements are added at 0 % and named in `uncovered_paths`, so the
+    dashboard shows a bar that is visibly not green and the suggested fixes can address
+    them. Anything the model already reported is preserved.
+    """
+    report = dict(coverage) if isinstance(coverage, dict) else {}
+    unreachable = find_unreachable(flow_xml)
+    if not unreachable:
+        return report
+
+    by_component = dict(report.get("coverage_by_component") or {})
+    for item in unreachable:
+        label = item["name"] or item["element"]
+        by_component[f"{item['id']} ({label})"] = "0%"
+    report["coverage_by_component"] = by_component
+
+    described = "; ".join(
+        f"{item['id']} ({item['name'] or item['element']})" for item in unreachable
+    )
+    existing = list(report.get("uncovered_paths") or [])
+    note = (
+        f"Unreachable in the process: {described}. These elements have no sequence flow "
+        "connecting them to the flow, so no test can exercise them."
+    )
+    if not any("Unreachable in the process" in str(entry) for entry in existing):
+        existing.append(note)
+    report["uncovered_paths"] = existing
+
+    return report

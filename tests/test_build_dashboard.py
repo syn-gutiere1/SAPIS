@@ -494,7 +494,7 @@ def test_missing_fix_risks_is_reported(artifacts: dict[str, Path]):
     """
     page = _page(artifacts, suggestions="Only an analysis, no risks section.")
 
-    assert "carries no <code>Fix Risks</code> section" in page
+    assert "carries no <code>Fix Risks</code>" in page
     assert 'id="fix-risks"' not in page
 
 
@@ -514,3 +514,70 @@ def test_fix_risks_content_is_escaped(artifacts: dict[str, Path]):
 
     assert "<script>alert" not in page
     assert "&lt;script&gt;alert" in page
+
+
+FIX_COVERAGE = """# Suggested fixes
+
+### Review
+
+The flow is green.
+
+## Fix Coverage
+
+- **CallActivity_77 (Groovy Script 2)** and **CallActivity_86 (Content Modifier)** have no
+  sequence flow connecting them, so no test can reach them. Either wire them into the flow
+  between ParallelGateway_74 and ExclusiveGateway_80, or delete them.
+- The exception subprocess is covered only for a malformed body; add a case where the
+  mapping fails on a well-formed payload.
+"""
+
+
+def test_fix_coverage_gets_its_own_heading(artifacts: dict[str, Path]):
+    """
+    The coverage report names elements below 100 % and paths no test reaches. They deserve
+    the same treatment as the risks: a concrete way to close them.
+    """
+    page = _page(artifacts, suggestions=FIX_COVERAGE)
+
+    assert 'id="fix-coverage"' in page
+    assert "wire them into the flow" in page
+    assert "CallActivity_77" in page
+
+
+def test_both_sections_are_rendered_together(artifacts: dict[str, Path]):
+    page = _page(artifacts, suggestions=FIX_RISKS + "\n\n## Fix Coverage\n\n- cover it.\n")
+
+    assert 'id="fix-risks"' in page
+    assert 'id="fix-coverage"' in page
+    assert "connect CallActivity_86" in page
+    assert "cover it." in page
+
+
+def test_both_missing_sections_are_reported(artifacts: dict[str, Path]):
+    page = _page(artifacts, suggestions="Only an analysis.")
+
+    assert "carries no <code>Fix Risks</code>" in page
+    assert "<code>Fix Coverage</code>" in page
+
+
+def test_empty_fix_coverage_is_reported(artifacts: dict[str, Path]):
+    page = _page(artifacts, suggestions="Analysis.\n\n## Fix Coverage\n")
+
+    assert 'id="fix-coverage"' in page
+    assert "opened the section but wrote no guidance" in page
+
+
+def test_coverage_below_100_is_visible_in_the_bars(artifacts: dict[str, Path]):
+    """An unreachable element merged into coverage.json must show as a bar that is not green."""
+    coverage = {
+        "target_coverage_percent": 100,
+        "coverage_by_component": {"CallActivity_86 (Content Modifier)": "0%"},
+        "uncovered_paths": [
+            "Unreachable in the process: CallActivity_86 (Content Modifier)"
+        ],
+    }
+
+    page = _page(artifacts, coverage=coverage)
+
+    assert "CallActivity_86 (Content Modifier)" in page
+    assert "width:0.0%" in page

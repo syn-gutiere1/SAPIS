@@ -20,6 +20,8 @@ from pipeline.extract import (
     extract_from_dir,
     extract_from_zip,
     find_iflow_files,
+    find_unreachable,
+    merge_unreachable,
 )
 
 # ---------------------------------------------------------------------------
@@ -273,3 +275,78 @@ def test_extractor_against_the_real_glovia_package():
     assert all(name.startswith("script/") for name in scripts)
     assert any(name.endswith(".groovy") for name in scripts)
     assert any(name.endswith(".gsh") for name in scripts)
+
+
+# ---------------------------------------------------------------------------
+# Reachability, computed from the artifact
+# ---------------------------------------------------------------------------
+
+FLOW_WITH_ORPHANS = """<?xml version="1.0" encoding="UTF-8"?>
+<bpmn2:definitions xmlns:bpmn2="http://www.omg.org/spec/BPMN/20100524/MODEL">
+  <bpmn2:startEvent id="StartEvent_1" name="Start">
+    <bpmn2:outgoing>Flow_1</bpmn2:outgoing>
+  </bpmn2:startEvent>
+  <bpmn2:callActivity id="CallActivity_4" name="Set headers">
+    <bpmn2:incoming>Flow_1</bpmn2:incoming>
+    <bpmn2:outgoing>Flow_2</bpmn2:outgoing>
+  </bpmn2:callActivity>
+  <bpmn2:endEvent id="EndEvent_1" name="End">
+    <bpmn2:incoming>Flow_2</bpmn2:incoming>
+  </bpmn2:endEvent>
+  <bpmn2:callActivity id="CallActivity_86" name="Content Modifier">
+  </bpmn2:callActivity>
+  <bpmn2:callActivity id="CallActivity_77" name="Groovy Script 2">
+  </bpmn2:callActivity>
+</bpmn2:definitions>
+"""
+
+
+def test_find_unreachable_reports_elements_with_no_sequence_flow():
+    orphans = find_unreachable(FLOW_WITH_ORPHANS)
+
+    assert [item["id"] for item in orphans] == ["CallActivity_77", "CallActivity_86"]
+    assert orphans[0]["name"] == "Groovy Script 2"
+    assert orphans[1]["element"] == "callActivity"
+
+
+def test_find_unreachable_accepts_a_connected_flow():
+    connected = FLOW_WITH_ORPHANS.replace(
+        '  <bpmn2:callActivity id="CallActivity_86" name="Content Modifier">\n'
+        "  </bpmn2:callActivity>\n"
+        '  <bpmn2:callActivity id="CallActivity_77" name="Groovy Script 2">\n'
+        "  </bpmn2:callActivity>\n",
+        "",
+    )
+
+    assert find_unreachable(connected) == []
+
+
+def test_merge_unreachable_adds_a_zero_percent_component():
+    """
+    The model reported this element in one generation and omitted it in the next, so a real
+    0 % entry came and went. Counting the sequence flows is deterministic.
+    """
+    report = merge_unreachable(
+        {"coverage_by_component": {"CallActivity_4 (Set headers)": "100%"}},
+        FLOW_WITH_ORPHANS,
+    )
+
+    assert report["coverage_by_component"]["CallActivity_4 (Set headers)"] == "100%"
+    assert report["coverage_by_component"]["CallActivity_77 (Groovy Script 2)"] == "0%"
+    assert report["coverage_by_component"]["CallActivity_86 (Content Modifier)"] == "0%"
+    assert any("Unreachable in the process" in p for p in report["uncovered_paths"])
+
+
+def test_merge_unreachable_is_idempotent():
+    """Running the merge twice must not duplicate the uncovered path."""
+    once = merge_unreachable({}, FLOW_WITH_ORPHANS)
+    twice = merge_unreachable(once, FLOW_WITH_ORPHANS)
+
+    notes = [p for p in twice["uncovered_paths"] if "Unreachable in the process" in p]
+    assert len(notes) == 1
+
+
+def test_merge_unreachable_handles_a_missing_coverage_report():
+    report = merge_unreachable(None, FLOW_WITH_ORPHANS)
+
+    assert report["coverage_by_component"]["CallActivity_86 (Content Modifier)"] == "0%"

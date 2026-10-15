@@ -394,6 +394,7 @@ def suggest_fixes(
     *,
     context: str = "",
     risks: list | None = None,
+    coverage: dict | None = None,
     settings: Settings | None = None,
     client: Any | None = None,
     sleep=time.sleep,
@@ -439,7 +440,12 @@ def suggest_fixes(
         "risks listed in the request: for each one, say concretely how to fix it in the "
         "iFlow or, when it cannot be fixed there, how to mitigate it. Name the step, "
         "property or script involved. If a risk is already covered by the current design, "
-        "say so instead of inventing work."
+        "say so instead of inventing work. "
+        "Then a section titled exactly `## Fix Coverage`, addressing every item in the "
+        "coverage report: for each uncovered path and every component below 100 %, say "
+        "concretely how to cover it - which test to add, or which change to the flow makes "
+        "it reachable. An element that no sequence flow connects cannot be tested at all, "
+        "so say whether it should be wired into the flow or removed from the artifact."
     )
 
     risks_block = ""
@@ -447,6 +453,13 @@ def suggest_fixes(
         risks_block = (
             "--- RISKS IDENTIFIED FOR THIS FLOW ---\n"
             f"{json.dumps(risks, ensure_ascii=False, indent=2)[:8_000]}\n\n"
+        )
+
+    coverage_block = ""
+    if coverage:
+        coverage_block = (
+            "--- COVERAGE REPORT ---\n"
+            f"{json.dumps(coverage, ensure_ascii=False, indent=2)[:8_000]}\n\n"
         )
 
     logs_block = (
@@ -478,9 +491,12 @@ def suggest_fixes(
         "--- GROOVY SCRIPTS ---\n"
         f"{json.dumps(scripts, ensure_ascii=False)[:10_000]}\n\n"
         f"{risks_block}"
+        f"{coverage_block}"
         f"{logs_block}"
         f"{question}"
-        "Finish with `## Fix Risks`: how to fix or mitigate each risk listed above."
+        "Finish with `## Fix Risks`: how to fix or mitigate each risk listed above. "
+        "Then `## Fix Coverage`: how to cover each item below 100 % and each uncovered "
+        "path listed above."
     )
 
     resolved_client = create_client(settings, client=client)
