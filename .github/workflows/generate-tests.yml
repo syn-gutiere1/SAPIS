@@ -451,6 +451,7 @@ jobs:
             --source "$SOURCE_DIR" \
             --context "$REPORTS_DIR/failure_context.md" \
             --logs "$REPORTS_DIR/failure_logs.txt" \
+            --risks "$PLANS_DIR/risks.json" \
             --suggestions "$REPORTS_DIR/ai_fix_suggestions.md"
 
       - name: Summarize the suggested fixes

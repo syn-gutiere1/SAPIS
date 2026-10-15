@@ -9,6 +9,7 @@ looks like data.
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -142,13 +143,45 @@ def test_page_has_one_panel_per_section(artifacts: dict[str, Path]):
 
     for ident in (
         "tab-overview",
-        "tab-tests",
         "tab-scenarios",
-        "tab-risks",
+        "tab-tests",
         "tab-coverage",
+        "tab-risks",
         "tab-fixes",
     ):
         assert f'id="{ident}"' in page
+
+
+def test_tabs_are_in_reading_order(artifacts: dict[str, Path]):
+    """
+    The tab order is the reading order: what the run was meant to demonstrate, then the
+    results, then the coverage, and finally what still needs action - the risks and the
+    suggested fixes.
+    """
+    page = _page(artifacts)
+
+    labels = re.findall(r'<button role="tab"[^>]*>([^<]*)', page)
+
+    assert labels == [
+        "Overview",
+        "Scenarios",
+        "Tests",
+        "Coverage",
+        "Risks",
+        "Suggested fixes",
+    ], labels
+
+    # The panels must follow the buttons. If they diverge, the first tab shown and the
+    # first section rendered disagree and the page opens on the wrong content.
+    panels = re.findall(r'<section id="(tab-[a-z]+)"', page)
+    assert panels == [
+        "tab-overview",
+        "tab-scenarios",
+        "tab-tests",
+        "tab-coverage",
+        "tab-risks",
+        "tab-fixes",
+    ], panels
 
 
 def test_page_escapes_model_content(artifacts: dict[str, Path]):
@@ -410,3 +443,74 @@ def test_cli_requires_an_output_path():
     result = _run("--iflow", "FlowA")
 
     assert result.returncode == 2
+
+
+# ---------------------------------------------------------------------------
+# The Fix Risks section
+# ---------------------------------------------------------------------------
+
+
+FIX_RISKS = """# Suggested fixes
+
+### Analysis
+
+The script does not compile.
+
+## Fix Risks
+
+- **Message Loss** - connect CallActivity_86 between ParallelGateway_74 and
+  ExclusiveGateway_80.
+- **Payload Loss** - initialise the InputPayload property before CallActivity_97.
+"""
+
+
+def test_fix_risks_gets_its_own_heading(artifacts: dict[str, Path]):
+    """
+    The answer closes with how to fix or mitigate each identified risk. That half is what
+    a reviewer acts on after the immediate failure is handled, so it is not left buried in
+    the tail of a long document.
+    """
+    page = _page(artifacts, suggestions=FIX_RISKS)
+
+    assert 'id="fix-risks"' in page
+    assert "connect CallActivity_86" in page
+    assert "initialise the InputPayload property" in page
+    # The analysis is still rendered above it.
+    assert "does not compile" in page
+
+
+def test_fix_risks_is_matched_regardless_of_case(artifacts: dict[str, Path]):
+    """The model is asked for `## Fix Risks` but may vary the casing."""
+    page = _page(artifacts, suggestions="Analysis.\n\n## FIX RISKS\n\nMitigation text.")
+
+    assert 'id="fix-risks"' in page
+    assert "Mitigation text." in page
+
+
+def test_missing_fix_risks_is_reported(artifacts: dict[str, Path]):
+    """
+    The model is instructed to emit the section. When it does not, the page says so
+    rather than letting the omission pass unnoticed.
+    """
+    page = _page(artifacts, suggestions="Only an analysis, no risks section.")
+
+    assert "carries no <code>Fix Risks</code> section" in page
+    assert 'id="fix-risks"' not in page
+
+
+def test_empty_fix_risks_is_reported(artifacts: dict[str, Path]):
+    page = _page(artifacts, suggestions="Analysis here.\n\n## Fix Risks\n")
+
+    assert 'id="fix-risks"' in page
+    assert "opened the section but wrote no guidance" in page
+
+
+def test_fix_risks_content_is_escaped(artifacts: dict[str, Path]):
+    """The risks and the answer both come from a model reading an untrusted artifact."""
+    page = _page(
+        artifacts,
+        suggestions="## Fix Risks\n\n<script>alert('x')</script>",
+    )
+
+    assert "<script>alert" not in page
+    assert "&lt;script&gt;alert" in page

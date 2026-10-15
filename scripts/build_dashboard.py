@@ -34,6 +34,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import re
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -343,9 +344,39 @@ def _render_suggestions(text: str | None) -> str:
             '<p class="muted">No suggested fixes for this run. The file is produced only '
             "when the generated suite fails.</p>"
         )
-    # The file is markdown produced by a model. It is rendered as preformatted text
-    # on purpose: no markdown engine, no raw HTML injection into the page.
-    return f'<pre class="prose">{_esc(text.strip())}</pre>'
+
+    body = text.strip()
+
+    # The answer ends with how to fix or mitigate each identified risk. That half is the
+    # one a reviewer acts on after the immediate failure is handled, so it gets its own
+    # heading instead of being buried in the tail of a long document.
+    #
+    # Matched case-insensitively: the model is asked for `## Fix Risks` but may vary the
+    # casing, and a missed match would silently leave the section unstyled.
+    parts = re.split(r"^\s*##\s+fix risks\s*$", body, maxsplit=1, flags=re.IGNORECASE | re.MULTILINE)
+    if len(parts) == 1:
+        return (
+            '<pre class="prose">'
+            f"{_esc(body)}</pre>"
+            '<p class="muted">This answer carries no <code>Fix Risks</code> section. The '
+            "model is asked for one; its absence is worth reporting.</p>"
+        )
+
+    analysis, fixes = parts[0].rstrip(), parts[1].strip()
+
+    # The file is markdown produced by a model. Both halves are rendered as preformatted
+    # text on purpose: no markdown engine, no raw HTML injection into the page.
+    html = f'<pre class="prose">{_esc(analysis)}</pre>'
+    html += '<h4 id="fix-risks">Fix Risks</h4>'
+    html += (
+        '<p class="sub">How to fix or mitigate each risk listed in the Risks tab. '
+        "Advisory: verify against the artifact before changing anything.</p>"
+    )
+    if fixes:
+        html += f'<pre class="prose">{_esc(fixes)}</pre>'
+    else:
+        html += '<p class="muted">The model opened the section but wrote no guidance.</p>'
+    return html
 
 
 # ---------------------------------------------------------------------------
@@ -466,26 +497,30 @@ def build_page(
             f"{_esc(label)}{badge}</button>"
         )
 
+    # Order matters: it is the reading order. The plan comes before the results, because
+    # the scenarios say what the run was meant to demonstrate; coverage follows the
+    # results, and closing with the risks and then the suggested fixes leaves the
+    # reviewer with what still needs action.
     panels = [
         ("tab-overview", "Overview", f"""
             <h2>Overview</h2>
             <p class="sub">Provenance of this run and how the suite performed.</p>
             {_render_provenance(manifest)}
         """),
-        ("tab-tests", "Tests", _render_tests(junit, groovy_junit)),
         ("tab-scenarios", "Scenarios", _render_scenarios(scenarios)),
-        ("tab-risks", "Risks", _render_risks(risks)),
+        ("tab-tests", "Tests", _render_tests(junit, groovy_junit)),
         ("tab-coverage", "Coverage", _render_coverage(coverage)),
+        ("tab-risks", "Risks", _render_risks(risks)),
         ("tab-fixes", "Suggested fixes", _render_suggestions(suggestions)),
     ]
 
     nav = "".join(
         [
             tab("tab-overview", "Overview"),
-            tab("tab-tests", "Tests", counts["tests"]),
             tab("tab-scenarios", "Scenarios", counts["scenarios"]),
-            tab("tab-risks", "Risks", counts["risks"]),
+            tab("tab-tests", "Tests", counts["tests"]),
             tab("tab-coverage", "Coverage"),
+            tab("tab-risks", "Risks", counts["risks"]),
             tab("tab-fixes", "Suggested fixes"),
         ]
     )
