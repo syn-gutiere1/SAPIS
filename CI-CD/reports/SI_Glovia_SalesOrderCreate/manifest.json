@@ -2,7 +2,7 @@
   "iflow": "SI_Glovia_SalesOrderCreate",
   "source": "CI-CD/iflows/SI_Glovia_SalesOrderCreate",
   "source_relative": "src/main/resources/scenarioflows/integrationflow/SI_Glovia_SalesOrderCreate.iflw",
-  "iflow_sha256": "f45d10f16b767552f99644344f7afad4d3afc73a720f4b7a84bb6d27cef66fa9",
+  "iflow_sha256": "3a7d84f9aa1765d29718b2b9c27815dcede9a99d4e338acbff5ce3dc1f858665",
   "scripts_sha256": {
     "script/GLOVIA_Conditioncheck_Salesorder_Create.groovy": "20a0912d32dbc2c0846dac8751a7d39becbcb092f5df5da92bd85cb0ce3e5848",
     "script/Interface_Generic_Headers.groovy": "668d03bddd37e6c742215eceef1bcf09a69fbf128a45e4ee2cf17f66e0244181",
@@ -14,15 +14,16 @@
     "plans": "CI-CD/test-plans/SI_Glovia_SalesOrderCreate"
   },
   "artifacts": {
-    "scenarios": 5,
+    "scenarios": 6,
     "risks": 4,
-    "testdata_files": 4,
+    "testdata_files": 5,
     "files": [
       "cases.json",
-      "testdata/sales_order_valid.xml",
-      "testdata/so_return_valid.xml",
-      "testdata/routing_unmatched.xml",
-      "testdata/payload_malformed.xml",
+      "testdata/valid_sales_order.xml",
+      "testdata/valid_so_return.xml",
+      "testdata/unmatched_routing.xml",
+      "testdata/malformed_payload.xml",
+      "testdata/empty_body.xml",
       "test_flow.py",
       "risks.json",
       "coverage.json",
@@ -35,21 +36,21 @@
     "base_url": "https://portkey.syngenta.com/v1",
     "temperature": 0.2,
     "language_code": "en_US",
-    "prompt_tokens": 15338,
-    "completion_tokens": 6805,
-    "total_tokens": 22143
+    "prompt_tokens": 15342,
+    "completion_tokens": 7344,
+    "total_tokens": 22686
   },
   "prompt": {
     "file": "prompt/prompt_template.txt",
-    "sha256": "6c61932a1e2c7dde3a49799656dab1f6feb8814ae9db055a7f958d84c6c53336"
+    "sha256": "c6e455ce60c789d69d9a1a2c689c9246e6947a76e70e902b2cb9993e1a9d384e"
   },
   "truncated": [],
   "attempts": 1,
-  "duration_seconds": 45.596,
-  "generated_at": "2026-10-15T13:15:22Z",
+  "duration_seconds": 46.405,
+  "generated_at": "2026-10-15T13:52:13Z",
   "environment": {
-    "github_run_id": "38740980798",
-    "github_sha": "105cb056c161c20d965741809b5720181e336411",
+    "github_run_id": "38746217334",
+    "github_sha": "1a58430f231356b987a9be41a525834c70bfdcdd",
     "github_ref": "refs/heads/sap-is",
     "github_repository": "syn-gutiere1/SAPIS"
   }

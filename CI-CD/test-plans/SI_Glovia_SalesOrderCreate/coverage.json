@@ -3,24 +3,30 @@
   "coverage_by_component": {
     "StartEvent_2 (SOAP Inbound)": "100%",
     "CallActivity_4 (Set Message headers)": "100%",
-    "ParallelGateway_74 (Multicast Branch 1)": "100%",
-    "ExclusiveGateway_80 (Router - SalesOrder, SO Return, Default)": "100%",
+    "ParallelGateway_74 (Parallel Multicast)": "100%",
+    "ExclusiveGateway_80 (Router)": "100%",
+    "SequenceFlow_82 (SalesOrder Route)": "100%",
+    "SequenceFlow_113 (SO Return Route)": "100%",
+    "SequenceFlow_110 (Default Route)": "100%",
     "CallActivity_102 (Message Mapping 1)": "100%",
     "CallActivity_13 (Interface_Generic_Headers)": "100%",
     "CallActivity_71 (Interface_Generic_Headers)": "100%",
-    "EndEvent_2 & EndEvent_9 (Success Message Ends)": "100%",
-    "EndEvent_11 (Escalation End Event)": "100%",
-    "SubProcess_91 (Exception Handling & Log_Payload)": "100%",
-    "CallActivity_77 (Detached Groovy Script)": "0%",
-    "CallActivity_86 (Detached Content Modifier)": "0%"
+    "EndEvent_2 & EndEvent_9 (Message End)": "100%",
+    "EndEvent_11 (Escalation End)": "100%",
+    "SubProcess_91 (Exception Subprocess)": "100%",
+    "CallActivity_97 (Read Payload Enricher)": "100%",
+    "CallActivity_100 (Log Payload Script)": "100%",
+    "EndEvent_95 (Error End Event)": "100%",
+    "CallActivity_77 (Orphaned Script 2)": "0%",
+    "CallActivity_86 (Orphaned Content Modifier)": "0%"
   },
   "uncovered_paths": [
-    "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) has no incoming or outgoing sequence flow connections in the BPMN XML model.",
-    "CallActivity_86 (Content Modifier for OrganizationId) has no incoming or outgoing sequence flow connections in the BPMN XML model."
+    "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) has no incoming or outgoing SequenceFlow edges in Process_1.",
+    "CallActivity_86 (Content Modifier extracting OrganizationId) has no incoming or outgoing SequenceFlow edges in Process_1."
   ],
   "coverage_recommendations": [
-    "Connect CallActivity_77 between CallActivity_4 and ParallelGateway_74 to actively execute OrderTypeCode validation before routing.",
-    "Connect CallActivity_86 between StartEvent_2 and CallActivity_4 or splice it into Branch 1 so OrganizationId is extracted reliably.",
-    "Once connected in the BPMN model, add targeted scenario TC_GLOVIA_006 validating OrderCodeValid header output ('true' vs 'false') to achieve 100% executable flow coverage."
+    "Integrate CallActivity_77 into SequenceFlow_3 between StartEvent_2 and CallActivity_4 to validate order code business rules before routing.",
+    "Integrate CallActivity_86 to correctly set the OrganizationId header from XPath before entering ExclusiveGateway_80.",
+    "Add unit test cases asserting header 'OrderCodeValid' equals 'true' or 'false' once CallActivity_77 is spliced into the flow."
   ]
 }

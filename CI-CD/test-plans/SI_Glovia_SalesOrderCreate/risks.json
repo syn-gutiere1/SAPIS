@@ -1,22 +1,22 @@
 [
   {
-    "risk": "Detached Groovy Script CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy)",
-    "consequence": "The script contains validation logic for OrderTypeCode (valid codes: YORB, YICB, POR, MNZ, PLM) setting header 'OrderCodeValid', but it has no sequence flows connected in the BPMN. Route decisions may bypass order validation completely, leading to invalid data reaching downstream endpoints.",
-    "mitigation": "Unit tests assert order code validity independently and confirm routing behavior across both supported codes and fallback escalation until CallActivity_77 is spliced into the process pipeline."
+    "risk": "Orphaned Content Modifier (CallActivity_86) and Groovy Script (CallActivity_77)",
+    "consequence": "The order code validity check and XPath extraction configured in CallActivity_77 and CallActivity_86 are detached from the active BPMN sequence flow. Invalid order codes bypass validation and route directly to EscalationEndEvent or downstream systems.",
+    "mitigation": "Unit tests TC_SOAP_ROUTING_ESCALATION_DEFAULT verify that invalid order types fall into the default escalation path; recommended to connect CallActivity_77 before ExclusiveGateway_80."
   },
   {
-    "risk": "Detached Content Modifier CallActivity_86",
-    "consequence": "The step intended to extract header 'OrganizationId' via XPath '/ns1:notifications/ns1:Notification/ns1:sObject/ns2:giic_OrderTypeCode__c' is disconnected from SequenceFlows, resulting in downstream consumers missing this header.",
-    "mitigation": "Integration test verifies that downstream mapping and header enrichment steps do not critically rely on OrganizationId or that default fallbacks are configured."
+    "risk": "Sensitive Data Leakage via Error Subprocess Logging (Log_Payload.gsh)",
+    "consequence": "In the event of parsing/mapping failures, CallActivity_97 reads ${property.InputPayload} and CallActivity_100 stores the full raw message payload into MPL attachments, exposing PII or confidential sales pricing in production logs.",
+    "mitigation": "Test case TC_SOAP_MAPPING_EXCEPTION_SUBPROCESS captures MPL attachment payloads; implement payload masking before logging in Log_Payload.gsh."
   },
   {
-    "risk": "High Memory Footprint from ${in.body} in InputPayload Property",
-    "consequence": "CallActivity_4 copies the entire incoming payload to property 'InputPayload'. With a configured maximumBodySize of 40MB, high concurrent traffic can exhaust JVM heap space and cause OutOfMemory errors.",
-    "mitigation": "Exception subprocess recovery tests confirm that InputPayload is only accessed on failure, and volume testing should enforce lower stream sizes or use message archiving."
+    "risk": "SOAP Receiver Endpoint Communication Timeout",
+    "consequence": "Downstream REST receivers (Participant_2 / Participant_112) timing out or failing during parallel processing causes hung threads or message backlog in the worker pool.",
+    "mitigation": "Automated pytest simulation covers connection timeouts and asserts proper failure escalation handling without silent failure."
   },
   {
-    "risk": "Asynchronous Escalation End Event Masking",
-    "consequence": "The inbound adapter is configured as OneWay SOAP (cxfRobust). When EndEvent_11 executes with 'RoutingConditionNotMet', the sender receives an HTTP 202 without an error fault, hiding routing failures from Glovia.",
-    "mitigation": "Automated unit tests validate header assertions and verify that Cloud Integration logs an MPL escalation state even when the external response is fire-and-forget."
+    "risk": "Externalized Parameter Resolution Failure",
+    "consequence": "If parameters {{Glovia_Route_SalesOrder}} or {{Glovia_Route2_ReturnSalesOrder}} are missing or corrupted in the Tenant Configuration, router conditions evaluate to false, routing all traffic to EscalationEndEvent.",
+    "mitigation": "Pytest engine executes parameterized routing validation ensuring deterministic fallback to EscalationEndEvent 'RoutingConditionNotMet'."
   }
 ]
