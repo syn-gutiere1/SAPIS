@@ -263,35 +263,31 @@ jobs:
       # must run anyway is guarded with `if: always()`.
       - name: Run pytest
         id: pytest
+        env:
+          # The suite writes the marker itself, from a `pytest_sessionfinish` hook in
+          # conftest.py. Deriving the verdict in the shell failed before: `tee` masks the
+          # status and `PIPESTATUS` was read as 0 for a failing run.
+          PYTEST_FAILURE_MARKER: ${{ env.REPORTS_DIR }}/pytest-failed
         run: |
-          # `pipefail` is set only for the pytest pipeline below, never for the step as
-          # a whole: it aborts the script on any non-zero command, which skipped the
-          # marker bookkeeping and once made a stale marker decide the verdict.
           set -u
           mkdir -p "$REPORTS_DIR"
           rm -f "$REPORTS_DIR/pytest-failed"
 
           # A generated suite that imports an undeclared package fails at collection;
-          # the log is kept either way for the summary. `tee` would mask the exit status,
-          # so it is read from PIPESTATUS.
-          set -o pipefail
+          # the log is kept either way for the summary.
           timeout 1800 python -m pytest "$TESTS_DIR" -v \
             --self-contained-html \
             --html="$REPORTS_DIR/report.html" \
             --junitxml="$REPORTS_DIR/junit.xml" \
             2>&1 | tee "$REPORTS_DIR/pytest_logs.txt"
-          PYTEST_STATUS="${PIPESTATUS[0]}"
-          set +o pipefail
 
-          if [ "$PYTEST_STATUS" -ne 0 ]; then
-            # A marker file, not `steps.pytest.conclusion`. The steps context did not
-            # report this failure reliably, and a file cannot be misread. The step still
-            # ends non-zero so the job is red without `continue-on-error`.
-            : > "$REPORTS_DIR/pytest-failed"
+          # The step ends 0: the marker is the signal the rest of the job reads, and the
+          # `Fail when ...` step turns it into a red job.
+          if [ -f "$REPORTS_DIR/pytest-failed" ]; then
             echo "::error::pytest failed; see $REPORTS_DIR/pytest_logs.txt"
-            exit 1
+          else
+            echo "pytest passed."
           fi
-          echo "pytest passed."
 
       # --- real Groovy scripts ----------------------------------------------
       # Gated on the artifact having changed at all. A change to the `.iflw` can alter
@@ -376,24 +372,25 @@ jobs:
 
           echo "Scripts: $SCRIPT_DIR"
           rm -f "$REPORTS_DIR/groovy-failed"
-          set -o pipefail
+
+          # The harness writes the marker itself, through HARNESS_FAILURE_MARKER. It is
+          # the component that knows the verdict; the shell previously guessed it from
+          # `${PIPESTATUS[0]}` and got it wrong in CI, where the harness reported
+          # "3 passed, 1 failed" and exited 1 while PIPESTATUS read 0. The guess is gone.
+          export HARNESS_FAILURE_MARKER="$REPORTS_DIR/groovy-failed"
           groovy -cp stubs groovy-harness/TestHarness.groovy \
             --scan-all "$SCRIPT_DIR" \
             --testdata "$GROOVY_TESTDATA" \
             --junit "$REPORTS_DIR/junit-groovy.xml" \
             2>&1 | tee "$REPORTS_DIR/groovy_logs.txt"
-          GROOVY_STATUS="${PIPESTATUS[0]}"
-          set +o pipefail
 
-          if [ "$GROOVY_STATUS" -ne 0 ]; then
-            # A marker file, for the same reason as in the pytest step: the steps
-            # context did not report this failure reliably. The harness exits 1 when a
-            # script raises or an assertion does not hold.
-            : > "$REPORTS_DIR/groovy-failed"
+          # The step ends 0: the marker is the signal the rest of the job reads, and the
+          # `Fail when ...` step turns it into a red job.
+          if [ -f "$REPORTS_DIR/groovy-failed" ]; then
             echo "::error::The Groovy harness failed; see $REPORTS_DIR/groovy_logs.txt"
-            exit 1
+          else
+            echo "The Groovy harness passed."
           fi
-          echo "The Groovy harness passed."
 
       # --- suggested fixes on failure ---------------------------------------
       # Runs when EITHER suite failed, detected through the marker file each suite

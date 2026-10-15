@@ -499,6 +499,44 @@ if (args.junit) {
     println "JUnit XML: ${junitFile}"
 }
 
+/**
+ * Record the verdict in a file, so the CI job does not have to infer it.
+ *
+ * The harness knows the outcome; the shell around it had to guess it from the exit
+ * status of a pipeline, and that guess failed in CI: the harness reported
+ * `Summary: 3 passed, 1 failed` and exited 1, while `${PIPESTATUS[0]}` read 0, so no
+ * marker was written and the job treated a red harness as a pass.
+ *
+ * `HARNESS_FAILURE_MARKER` carries the path to write when the run failed. When the
+ * variable is absent - a local run - nothing is written.
+ *
+ * Returns true when a marker was written.
+ */
+static boolean writeFailureMarker(String reason) {
+    def path = System.getenv('HARNESS_FAILURE_MARKER')
+    if (!path) return false
+    try {
+        def file = new File(path)
+        file.parentFile?.mkdirs()
+        file.setText(reason + System.lineSeparator(), 'UTF-8')
+        println "Failure marker written: ${file} (${reason})"
+        return true
+    } catch (Exception e) {
+        // Never fail the run because the marker could not be written: the exit status
+        // still reports the verdict.
+        System.err.println("Could not write the failure marker ${path}: ${e.message}")
+        return false
+    }
+}
+
 // Exit 0 only when every case passed AND there is no script without a reviewed
 // fixture (when --require-fixtures was used).
-System.exit((failed == 0 && pending.isEmpty()) ? 0 : 1)
+def verdictFailed = (failed != 0 || !pending.isEmpty())
+if (verdictFailed) {
+    def reason = failed != 0
+            ? "${failed} of ${totalCases} case(s) failed"
+            : "${pending.size()} script(s) without a reviewed fixture"
+    writeFailureMarker(reason)
+}
+System.exit(verdictFailed ? 1 : 0)
+
