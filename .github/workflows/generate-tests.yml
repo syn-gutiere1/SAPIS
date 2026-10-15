@@ -353,13 +353,16 @@ jobs:
             2>&1 | tee "$REPORTS_DIR/groovy_logs.txt"
 
       # --- suggested fixes on failure ---------------------------------------
-      # Runs only when the suite failed, because that is when a hypothesis about
-      # what is wrong in the iFlow is worth an LLM call. The reports say what broke;
-      # this says what is probably wrong. It is advisory: the step may not fail the
-      # job, and the generated file is committed with the rest of the evidence.
+      # Runs when EITHER suite failed. It used to be gated on pytest alone, so a
+      # failure that only the Groovy harness caught produced no suggestions at all,
+      # and the `ai_fix_suggestions.md` left in the tree was a stale file from an
+      # older run - worse than no file, because it looks current.
+      #
+      # It is advisory: the step may not fail the job, and the generated file is
+      # committed with the rest of the evidence.
       - name: Analyse the failure and suggest fixes
         id: suggestions
-        if: steps.pytest.outcome == 'failure'
+        if: steps.pytest.outcome == 'failure' || steps.groovy.outcome == 'failure'
         continue-on-error: true
         env:
           PORTKEY_AUTH_TOKEN: ${{ secrets.PORTKEY_AUTH_TOKEN }}
@@ -370,9 +373,26 @@ jobs:
         run: |
           set -uo pipefail
           mkdir -p "$REPORTS_DIR"
+
+          # Combine both logs: the useful evidence may be in either, and when only
+          # the harness fails the pytest log can be empty.
+          : > "$REPORTS_DIR/failure_context.txt"
+          for log in "$REPORTS_DIR/pytest_logs.txt" "$REPORTS_DIR/groovy_logs.txt"; do
+            if [ -f "$log" ]; then
+              echo "===== $(basename "$log") =====" >> "$REPORTS_DIR/failure_context.txt"
+              cat "$log" >> "$REPORTS_DIR/failure_context.txt"
+              echo "" >> "$REPORTS_DIR/failure_context.txt"
+            fi
+          done
+
+          if [ ! -s "$REPORTS_DIR/failure_context.txt" ]; then
+            echo "::warning::No failure log to analyse."
+            exit 0
+          fi
+
           python run.py --mode analyze-failures \
             --source "$SOURCE_DIR" \
-            --logs "$REPORTS_DIR/pytest_logs.txt" \
+            --logs "$REPORTS_DIR/failure_context.txt" \
             --suggestions "$REPORTS_DIR/ai_fix_suggestions.md"
 
       - name: Summarize the suggested fixes
@@ -469,6 +489,18 @@ jobs:
         run: |
           find "$TESTS_DIR" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
           find "$TESTS_DIR" -type d -name .pytest_cache -prune -exec rm -rf {} + 2>/dev/null || true
+
+          # A run that passed must not leave the previous run's suggestions behind.
+          # The file is only rewritten when something fails, so without this a green
+          # run would keep committing a stale diagnosis of an already-fixed failure,
+          # dated to an older commit and looking entirely current.
+          rm -f "$REPORTS_DIR/failure_context.txt"
+          if [ "${{ steps.pytest.outcome }}" != "failure" ] && [ "${{ steps.groovy.outcome }}" != "failure" ]; then
+            if [ -f "$REPORTS_DIR/ai_fix_suggestions.md" ]; then
+              rm -f "$REPORTS_DIR/ai_fix_suggestions.md"
+              echo "Removed the stale ai_fix_suggestions.md: this run had no failures."
+            fi
+          fi
 
       - name: Publish the evidence
         if: always()
