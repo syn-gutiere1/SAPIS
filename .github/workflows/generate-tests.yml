@@ -264,15 +264,29 @@ jobs:
       - name: Run pytest
         id: pytest
         run: |
-          set -o pipefail
+          set -uo pipefail
           mkdir -p "$REPORTS_DIR"
-          # A generated suite that imports an undeclared package fails at
-          # collection; the log is kept either way for the summary.
+          rm -f "$REPORTS_DIR/pytest-failed"
+
+          # A generated suite that imports an undeclared package fails at collection;
+          # the log is kept either way for the summary. `tee` would mask the exit status,
+          # so it is read from PIPESTATUS.
           timeout 1800 python -m pytest "$TESTS_DIR" -v \
             --self-contained-html \
             --html="$REPORTS_DIR/report.html" \
             --junitxml="$REPORTS_DIR/junit.xml" \
             2>&1 | tee "$REPORTS_DIR/pytest_logs.txt"
+          PYTEST_STATUS="${PIPESTATUS[0]}"
+
+          if [ "$PYTEST_STATUS" -ne 0 ]; then
+            # A marker file, not `steps.pytest.conclusion`. The steps context did not
+            # report this failure reliably, and a file cannot be misread. The step still
+            # ends non-zero so the job is red without `continue-on-error`.
+            : > "$REPORTS_DIR/pytest-failed"
+            echo "::error::pytest failed; see $REPORTS_DIR/pytest_logs.txt"
+            exit 1
+          fi
+          echo "pytest passed."
 
       # --- real Groovy scripts ----------------------------------------------
       # Gated on the artifact having changed at all. A change to the `.iflw` can alter
@@ -356,28 +370,39 @@ jobs:
           fi
 
           echo "Scripts: $SCRIPT_DIR"
+          rm -f "$REPORTS_DIR/groovy-failed"
           groovy -cp stubs groovy-harness/TestHarness.groovy \
             --scan-all "$SCRIPT_DIR" \
             --testdata "$GROOVY_TESTDATA" \
             --junit "$REPORTS_DIR/junit-groovy.xml" \
             2>&1 | tee "$REPORTS_DIR/groovy_logs.txt"
+          GROOVY_STATUS="${PIPESTATUS[0]}"
+
+          if [ "$GROOVY_STATUS" -ne 0 ]; then
+            # A marker file, for the same reason as in the pytest step: the steps
+            # context did not report this failure reliably. The harness exits 1 when a
+            # script raises or an assertion does not hold.
+            : > "$REPORTS_DIR/groovy-failed"
+            echo "::error::The Groovy harness failed; see $REPORTS_DIR/groovy_logs.txt"
+            exit 1
+          fi
+          echo "The Groovy harness passed."
 
       # --- suggested fixes on failure ---------------------------------------
-      # Runs when EITHER suite failed. It used to be gated on pytest alone, so a
-      # failure that only the Groovy harness caught produced no suggestions at all,
-      # and the `ai_fix_suggestions.md` left in the tree was a stale file from an
-      # older run - worse than no file, because it looks current.
+      # Runs when EITHER suite failed, detected through the marker file each suite
+      # writes on failure. It is NOT detected through `steps.<id>.conclusion`: the job
+      # API reported the harness step as `conclusion: failure` while
+      # `steps.groovy.conclusion == 'failure'` evaluated false in a step `if`, so this
+      # step and both fail steps were skipped on the only failure this repository
+      # produces. A file cannot be misread.
       #
       # It is advisory: the step may not fail the job, and the generated file is
       # committed with the rest of the evidence.
-      #
-      # `conclusion` on the two suite steps, because neither carries
-      # `continue-on-error` any more. That flag is what made a red suite report
-      # `conclusion: success`, so this step could not tell that anything had failed -
-      # it skipped the only failure this repository produces.
       - name: Analyse the failure and suggest fixes
         id: suggestions
-        if: steps.pytest.conclusion == 'failure' || steps.groovy.conclusion == 'failure'
+        if: >-
+          always() && (hashFiles(format('{0}/pytest-failed', env.REPORTS_DIR)) != ''
+          || hashFiles(format('{0}/groovy-failed', env.REPORTS_DIR)) != '')
         continue-on-error: true
         env:
           PORTKEY_AUTH_TOKEN: ${{ secrets.PORTKEY_AUTH_TOKEN }}
@@ -466,8 +491,11 @@ jobs:
             --risks "$PLANS_DIR/risks.json" \
             --suggestions "$REPORTS_DIR/ai_fix_suggestions.md"
 
+      # Gated on the file existing, not on `steps.suggestions.outcome`: that step keeps
+      # `continue-on-error` (an LLM failure must not invalidate the test evidence), and
+      # with it the outcome does not distinguish a produced file from a failed call.
       - name: Summarize the suggested fixes
-        if: steps.suggestions.outcome == 'success'
+        if: hashFiles(format('{0}/ai_fix_suggestions.md', env.REPORTS_DIR)) != ''
         continue-on-error: true
         run: |
           {
@@ -481,7 +509,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish the suggested fixes in the PR
-        if: steps.suggestions.outcome == 'success'
+        if: hashFiles(format('{0}/ai_fix_suggestions.md', env.REPORTS_DIR)) != ''
         continue-on-error: true
         run: |
           # The suggestion only has value where the developer is already looking, so
@@ -514,11 +542,11 @@ jobs:
           fail-on-error: false
 
       - name: Publish the Groovy results in Checks
-        # `outcome` is the right field here: the step no longer has
-        # `continue-on-error`, so a red harness gives `conclusion: failure` and would
-        # still need its report published. What must be excluded is the case where the
-        # step never ran at all, which is what `outcome == 'skipped'` identifies.
-        if: always() && steps.groovy.outcome != 'skipped'
+        # Gated on the report existing rather than on `steps.groovy`, for the same reason
+        # as everywhere else in this job: the steps context did not reflect the real
+        # outcome. A missing file means the harness never ran, and the reporter has
+        # nothing to publish.
+        if: always() && hashFiles(format('{0}/junit-groovy.xml', env.REPORTS_DIR)) != ''
         continue-on-error: true
         uses: dorny/test-reporter@v1
         with:
@@ -569,17 +597,13 @@ jobs:
           find "$TESTS_DIR" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
           find "$TESTS_DIR" -type d -name .pytest_cache -prune -exec rm -rf {} + 2>/dev/null || true
 
-          # A run that passed must not leave the previous run's suggestions behind.
-          # The file is only rewritten when something fails, so without this a green
-          # run would keep committing a stale diagnosis of an already-fixed failure,
-          # dated to an older commit and looking entirely current.
-          #
-          # This tests `conclusion`, which carries the real verdict now that neither
-          # suite uses `continue-on-error`. It previously tested `outcome`; with that
-          # flag set, `outcome` was always `success`, so this step decided a red run
-          # "had no failures" and deleted the suggestions it had just been given.
+          # A run that passed must not leave the previous run's suggestions behind, and
+          # must not leave a marker claiming a failure. Both are decided from the files
+          # the suites write, not from `steps.<id>.conclusion`, which did not report the
+          # harness failure reliably and once deleted the suggestions on the very run
+          # that produced them.
           rm -f "$REPORTS_DIR/failure_context.md" "$REPORTS_DIR/failure_logs.txt"
-          if [ "${{ steps.pytest.conclusion }}" != "failure" ] && [ "${{ steps.groovy.conclusion }}" != "failure" ]; then
+          if [ ! -f "$REPORTS_DIR/pytest-failed" ] && [ ! -f "$REPORTS_DIR/groovy-failed" ]; then
             if [ -f "$REPORTS_DIR/ai_fix_suggestions.md" ]; then
               rm -f "$REPORTS_DIR/ai_fix_suggestions.md"
               echo "Removed the stale ai_fix_suggestions.md: this run had no failures."
@@ -653,14 +677,18 @@ jobs:
       # red suite fails the step. The reports and the evidence still survive, because
       # every step that publishes them is guarded with `if: always()`. These two steps
       # keep the failure message pointing at the artifact.
+      # Each suite already fails its own step, so the job is red without these. They are
+      # kept because they turn an opaque step failure into a message that names the
+      # artifact, and they read the marker files for the same reason as above: the steps
+      # context did not report the suite failures reliably.
       - name: Fail when the generated tests failed
-        if: steps.pytest.conclusion == 'failure'
+        if: hashFiles(format('{0}/pytest-failed', env.REPORTS_DIR)) != ''
         run: |
           echo "::error::pytest failed for ${{ matrix.iflow }}; see the artifact $ARTIFACT_NAME."
           exit 1
 
       - name: Fail when the real Groovy scripts failed
-        if: steps.groovy.conclusion == 'failure'
+        if: hashFiles(format('{0}/groovy-failed', env.REPORTS_DIR)) != ''
         run: |
           echo "::error::The Groovy harness failed for ${{ matrix.iflow }}: a real script raised or an assertion did not hold. See $REPORTS_DIR/junit-groovy.xml."
           exit 1
