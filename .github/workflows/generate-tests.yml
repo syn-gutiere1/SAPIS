@@ -412,17 +412,20 @@ jobs:
       - name: Publish the suggested fixes in the PR
         if: steps.suggestions.outcome == 'success'
         continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # The suggestion only has value where the developer is already looking,
-          # so it goes to the PR as well as to the evidence directory.
+          # The suggestion only has value where the developer is already looking, so
+          # a copy is staged for the PR body. It goes to `.pr/`, which is uploaded as
+          # part of the artifact: it used to be written into EVIDENCE_DIR, which the
+          # upload did not include, so the copy never reached the `open-pr` job and
+          # the PR body silently carried no suggestions at all.
+          PR_STAGE="${{ env.EVIDENCE_DIR }}/../.pr"
+          mkdir -p "$PR_STAGE"
           {
             echo ""
             echo "### Suggested fixes for \`${{ matrix.iflow }}\`"
             echo ""
             cat "$REPORTS_DIR/ai_fix_suggestions.md"
-          } > "${{ env.EVIDENCE_DIR }}/suggestions-${{ matrix.iflow }}.md"
+          } > "$PR_STAGE/suggestions-${{ matrix.iflow }}.md"
           echo "Staged ${{ matrix.iflow }} suggestions for the PR body."
 
       # --- results ----------------------------------------------------------
@@ -514,6 +517,7 @@ jobs:
             ${{ env.TESTS_DIR }}/**
             ${{ env.PLANS_DIR }}/**
             ${{ env.SOURCE_DIR }}/${{ matrix.artifact_root }}/**
+            .pr/**
 
       # --- commit the generated artifacts --------------------------------
       # Without this step the pipeline is a dead end: the files are generated on
