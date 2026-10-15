@@ -482,9 +482,11 @@ jobs:
             fi
           done
 
+          # An empty log is normal on a green run: there was no failure to log. The
+          # analysis then reviews the flow and the assessed risks instead, so this is a
+          # note rather than the dead end it used to be.
           if [ ! -s "$REPORTS_DIR/failure_logs.txt" ]; then
-            echo "::warning::No failure log to analyse."
-            exit 0
+            echo "No failure log; the analysis reviews the flow and its risks."
           fi
 
           python run.py --mode analyze-failures \
@@ -604,18 +606,11 @@ jobs:
           find "$TESTS_DIR" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
           find "$TESTS_DIR" -type d -name .pytest_cache -prune -exec rm -rf {} + 2>/dev/null || true
 
-          # A run that passed must not leave the previous run's suggestions behind, and
-          # must not leave a marker claiming a failure. Both are decided from the files
-          # the suites write, not from `steps.<id>.conclusion`, which did not report the
-          # harness failure reliably and once deleted the suggestions on the very run
-          # that produced them.
+          # `ai_fix_suggestions.md` is NOT removed here any more. The analysis runs on
+          # every run, so the file is always current; deleting it on a green run also
+          # deleted the Fix Risks half, which a green run needs most - the risks belong
+          # to the artifact, not to the run.
           rm -f "$REPORTS_DIR/failure_context.md" "$REPORTS_DIR/failure_logs.txt"
-          if [ ! -f ".ci/pytest-failed" ] && [ ! -f ".ci/groovy-failed" ]; then
-            if [ -f "$REPORTS_DIR/ai_fix_suggestions.md" ]; then
-              rm -f "$REPORTS_DIR/ai_fix_suggestions.md"
-              echo "Removed the stale ai_fix_suggestions.md: this run had no failures."
-            fi
-          fi
 
       - name: Publish the evidence
         if: always()

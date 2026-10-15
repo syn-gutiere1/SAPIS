@@ -311,14 +311,15 @@ def _cmd_analyze_failures(args: argparse.Namespace) -> int:
     """
     extract_mod, portkey_mod, _writer_mod = _modules()
 
-    if not args.logs:
-        print("[ERROR] --logs is required in analyze-failures mode.", file=sys.stderr)
-        return EXIT_CONFIG
-
-    logs_path = Path(args.logs)
-    if not logs_path.is_file():
-        print(f"[ERROR] pytest log not found: {logs_path}", file=sys.stderr)
-        return EXIT_CONFIG
+    # `--logs` is optional: with no failures there is nothing to diagnose, but the risks
+    # still deserve the `Fix Risks` half, so the analysis runs on a green run too.
+    test_output = ""
+    if args.logs:
+        logs_path = Path(args.logs)
+        if not logs_path.is_file():
+            print(f"[ERROR] failure log not found: {logs_path}", file=sys.stderr)
+            return EXIT_CONFIG
+        test_output = logs_path.read_text(encoding="utf-8", errors="replace")
 
     try:
         flow_xml, scripts, iflow_file = extract_mod.extract(Path(args.source))
@@ -334,7 +335,6 @@ def _cmd_analyze_failures(args: argparse.Namespace) -> int:
 
     flow_xml = extract_mod.scrub(flow_xml)
     scripts = {name: extract_mod.scrub(content) for name, content in scripts.items()}
-    test_output = logs_path.read_text(encoding="utf-8", errors="replace")
 
     # The preamble goes in its own slot so that truncating a long log cannot drop it.
     context = ""
@@ -377,14 +377,17 @@ def _cmd_analyze_failures(args: argparse.Namespace) -> int:
     destino = Path(args.suggestions) if args.suggestions else Path(args.out) / "ai_fix_suggestions.md"
     destino.parent.mkdir(parents=True, exist_ok=True)
 
+    failou = bool(test_output.strip())
+    origem = (
+        "the failure log" if failou else "the flow, its scripts and the assessed risks"
+    )
     cabecalho = (
         f"# Suggested fixes — {iflow_name}\n\n"
-        f"Generated from the failure log of commit "
-        f"`{os.environ.get('GITHUB_SHA', 'local')[:12]}`.\n\n"
-        "> Written by a model from the iFlow XML, its scripts and the failure log "
-        "(pytest, the Groovy harness, or both). It is a hypothesis to speed up the "
-        "investigation, not a verdict: check it against the artifact before changing "
-        "anything.\n\n"
+        f"Generated for commit `{os.environ.get('GITHUB_SHA', 'local')[:12]}` from "
+        f"{origem}.\n\n"
+        "> Written by a model from the iFlow XML and its scripts. It is a hypothesis to "
+        "speed up the investigation, not a verdict: check it against the artifact before "
+        "changing anything.\n\n"
         "---\n\n"
     )
     destino.write_text(cabecalho + suggestion + "\n", encoding="utf-8")
@@ -419,7 +422,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--logs",
         default=None,
-        help="Failure log to analyse (analyze-failures mode).",
+        help=(
+            "Failure log to analyse (analyze-failures mode). Optional: with no failures "
+            "the analysis still runs, reviewing the flow and the risks instead of a log."
+        ),
     )
     parser.add_argument(
         "--context",
