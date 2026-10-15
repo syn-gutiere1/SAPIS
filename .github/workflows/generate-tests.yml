@@ -363,9 +363,14 @@ jobs:
       #
       # It is advisory: the step may not fail the job, and the generated file is
       # committed with the rest of the evidence.
+      #
+      # `conclusion`, not `outcome`: both suites run with `continue-on-error: true`, for
+      # which `outcome` is always `success` - it says the step was allowed to fail, not
+      # that it did. Using `outcome` here meant this step never ran when the harness
+      # failed, which is the only failure this repository actually produces.
       - name: Analyse the failure and suggest fixes
         id: suggestions
-        if: steps.pytest.outcome == 'failure' || steps.groovy.outcome == 'failure'
+        if: steps.pytest.conclusion == 'failure' || steps.groovy.conclusion == 'failure'
         continue-on-error: true
         env:
           PORTKEY_AUTH_TOKEN: ${{ secrets.PORTKEY_AUTH_TOKEN }}
@@ -502,7 +507,7 @@ jobs:
           fail-on-error: false
 
       - name: Publish the Groovy results in Checks
-        if: always() && steps.groovy.outcome != 'skipped'
+        if: always() && steps.groovy.conclusion != 'skipped'
         continue-on-error: true
         uses: dorny/test-reporter@v1
         with:
@@ -557,8 +562,14 @@ jobs:
           # The file is only rewritten when something fails, so without this a green
           # run would keep committing a stale diagnosis of an already-fixed failure,
           # dated to an older commit and looking entirely current.
+          #
+          # This tests `conclusion`, NOT `outcome`. The two suites run with
+          # `continue-on-error: true`, and for such a step `outcome` is always
+          # `success` - it records whether the step was allowed to fail, not whether it
+          # did. `conclusion` carries the real verdict. Testing `outcome` here deleted
+          # the suggestions on the very run that produced them.
           rm -f "$REPORTS_DIR/failure_context.md" "$REPORTS_DIR/failure_logs.txt"
-          if [ "${{ steps.pytest.outcome }}" != "failure" ] && [ "${{ steps.groovy.outcome }}" != "failure" ]; then
+          if [ "${{ steps.pytest.conclusion }}" != "failure" ] && [ "${{ steps.groovy.conclusion }}" != "failure" ]; then
             if [ -f "$REPORTS_DIR/ai_fix_suggestions.md" ]; then
               rm -f "$REPORTS_DIR/ai_fix_suggestions.md"
               echo "Removed the stale ai_fix_suggestions.md: this run had no failures."
@@ -632,13 +643,13 @@ jobs:
       # the tests fail; the verdict is applied here, after everything was
       # published.
       - name: Fail when the generated tests failed
-        if: steps.pytest.outcome == 'failure'
+        if: steps.pytest.conclusion == 'failure'
         run: |
           echo "::error::pytest failed for ${{ matrix.iflow }}; see the artifact $ARTIFACT_NAME."
           exit 1
 
       - name: Fail when the real Groovy scripts failed
-        if: steps.groovy.outcome == 'failure'
+        if: steps.groovy.conclusion == 'failure'
         run: |
           echo "::error::The Groovy harness failed for ${{ matrix.iflow }}: a real script raised or an assertion did not hold. See $REPORTS_DIR/junit-groovy.xml."
           exit 1
