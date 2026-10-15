@@ -355,11 +355,12 @@ def _cmd_analyze_failures(args: argparse.Namespace) -> int:
 
     cabecalho = (
         f"# Suggested fixes — {iflow_name}\n\n"
-        f"Generated from the pytest failure log of commit "
+        f"Generated from the failure log of commit "
         f"`{os.environ.get('GITHUB_SHA', 'local')[:12]}`.\n\n"
-        "> Written by a model from the iFlow XML, its scripts and the failure log. "
-        "It is a hypothesis to speed up the investigation, not a verdict: check it "
-        "against the artifact before changing anything.\n\n"
+        "> Written by a model from the iFlow XML, its scripts and the failure log "
+        "(pytest, the Groovy harness, or both). It is a hypothesis to speed up the "
+        "investigation, not a verdict: check it against the artifact before changing "
+        "anything.\n\n"
         "---\n\n"
     )
     destino.write_text(cabecalho + suggestion + "\n", encoding="utf-8")
