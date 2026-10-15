@@ -899,5 +899,4 @@
         </bpmndi:BPMNPlane>
     </bpmndi:BPMNDiagram>
 
-<!-- validate suggestions on a green run -->
 </bpmn2:definitions>
