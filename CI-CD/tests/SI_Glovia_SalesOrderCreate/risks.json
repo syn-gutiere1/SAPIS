@@ -1,22 +1,22 @@
 [
   {
-    "risk": "Orphaned Content Modifier (CallActivity_86) and Groovy Script (CallActivity_77)",
-    "consequence": "The order code validity check and XPath extraction configured in CallActivity_77 and CallActivity_86 are detached from the active BPMN sequence flow. Invalid order codes bypass validation and route directly to EscalationEndEvent or downstream systems.",
-    "mitigation": "Unit tests TC_SOAP_ROUTING_ESCALATION_DEFAULT verify that invalid order types fall into the default escalation path; recommended to connect CallActivity_77 before ExclusiveGateway_80."
+    "risk": "Payload loss during runtime exception handling",
+    "consequence": "If transformation fails midway in CallActivity_102, downstream monitoring cannot access the raw payload unless explicitly cached.",
+    "mitigation": "CallActivity_4 sets property InputPayload before routing; CallActivity_97 enriches the body from ${property.InputPayload} and logs it as an attachment in CallActivity_100."
   },
   {
-    "risk": "Sensitive Data Leakage via Error Subprocess Logging (Log_Payload.gsh)",
-    "consequence": "In the event of parsing/mapping failures, CallActivity_97 reads ${property.InputPayload} and CallActivity_100 stores the full raw message payload into MPL attachments, exposing PII or confidential sales pricing in production logs.",
-    "mitigation": "Test case TC_SOAP_MAPPING_EXCEPTION_SUBPROCESS captures MPL attachment payloads; implement payload masking before logging in Log_Payload.gsh."
+    "risk": "Message dropped silently when routing conditions are not met",
+    "consequence": "Sales order or return requests with unexpected OrderTypeCodes will be lost without alerting operations.",
+    "mitigation": "ExclusiveGateway_80 defines default SequenceFlow_110 directing unmatched messages to EscalationEndEvent EndEvent_11 with ErrorCode RoutingConditionNotMet."
   },
   {
-    "risk": "SOAP Receiver Endpoint Communication Timeout",
-    "consequence": "Downstream REST receivers (Participant_2 / Participant_112) timing out or failing during parallel processing causes hung threads or message backlog in the worker pool.",
-    "mitigation": "Automated pytest simulation covers connection timeouts and asserts proper failure escalation handling without silent failure."
+    "risk": "Groovy XmlSlurper namespace evaluation failure on runtime updates",
+    "consequence": "Updating runtime to Groovy 4 can cause XmlSlurper parsing to fail or misinterpret qualified tags.",
+    "mitigation": "Script GLOVIA_Conditioncheck_Salesorder_Create.groovy explicitly imports groovy.xml.XmlSlurper and accesses nodes by local name rather than hardcoded prefixes."
   },
   {
-    "risk": "Externalized Parameter Resolution Failure",
-    "consequence": "If parameters {{Glovia_Route_SalesOrder}} or {{Glovia_Route2_ReturnSalesOrder}} are missing or corrupted in the Tenant Configuration, router conditions evaluate to false, routing all traffic to EscalationEndEvent.",
-    "mitigation": "Pytest engine executes parameterized routing validation ensuring deterministic fallback to EscalationEndEvent 'RoutingConditionNotMet'."
+    "risk": "Null pointer in Interface_Generic_Headers script",
+    "consequence": "Missing headers like Region or Sender could cause unhandled exceptions during logging.",
+    "mitigation": "The script enforces explicit null checks prior to invoking messageLog.addCustomHeaderProperty for all headers."
   }
 ]

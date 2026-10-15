@@ -1,32 +1,19 @@
 {
   "target_coverage_percent": 100,
   "coverage_by_component": {
-    "StartEvent_2 (SOAP Inbound)": "100%",
     "CallActivity_4 (Set Message headers)": "100%",
     "ParallelGateway_74 (Parallel Multicast)": "100%",
     "ExclusiveGateway_80 (Router)": "100%",
-    "SequenceFlow_82 (SalesOrder Route)": "100%",
-    "SequenceFlow_113 (SO Return Route)": "100%",
-    "SequenceFlow_110 (Default Route)": "100%",
+    "SequenceFlow_82 (SalesOrder branch)": "100%",
+    "SequenceFlow_113 (SO Return branch)": "100%",
+    "SequenceFlow_110 (Default Escalation branch)": "100%",
     "CallActivity_102 (Message Mapping 1)": "100%",
-    "CallActivity_13 (Interface_Generic_Headers)": "100%",
-    "CallActivity_71 (Interface_Generic_Headers)": "100%",
-    "EndEvent_2 & EndEvent_9 (Message End)": "100%",
-    "EndEvent_11 (Escalation End)": "100%",
-    "SubProcess_91 (Exception Subprocess)": "100%",
-    "CallActivity_97 (Read Payload Enricher)": "100%",
-    "CallActivity_100 (Log Payload Script)": "100%",
-    "EndEvent_95 (Error End Event)": "100%",
-    "CallActivity_77 (Orphaned Script 2)": "0%",
-    "CallActivity_86 (Orphaned Content Modifier)": "0%"
+    "CallActivity_13 & CallActivity_71 (Generic Headers)": "100%",
+    "SubProcess_91 (Exception Subprocess & Logging)": "100%",
+    "EndEvent_2, EndEvent_9, EndEvent_11, EndEvent_95": "100%"
   },
-  "uncovered_paths": [
-    "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) has no incoming or outgoing SequenceFlow edges in Process_1.",
-    "CallActivity_86 (Content Modifier extracting OrganizationId) has no incoming or outgoing SequenceFlow edges in Process_1."
-  ],
+  "uncovered_paths": [],
   "coverage_recommendations": [
-    "Integrate CallActivity_77 into SequenceFlow_3 between StartEvent_2 and CallActivity_4 to validate order code business rules before routing.",
-    "Integrate CallActivity_86 to correctly set the OrganizationId header from XPath before entering ExclusiveGateway_80.",
-    "Add unit test cases asserting header 'OrderCodeValid' equals 'true' or 'false' once CallActivity_77 is spliced into the flow."
+    "Incorporate unreferenced standalone elements (CallActivity_86 Content Modifier and CallActivity_77 Groovy Script 2) into the active BPMN sequence flow or clean up the artifact repository to prevent deployment ambiguity."
   ]
 }
