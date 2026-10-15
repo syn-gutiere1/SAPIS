@@ -375,9 +375,9 @@ def _render_suggestions(text: str | None) -> str:
     )
 
     analysis = (pieces[0] or "").rstrip()
-    # The file is markdown produced by a model, rendered as preformatted text on purpose:
-    # no markdown engine, no raw HTML injection into the page.
-    html = f'<pre class="prose">{_esc(analysis)}</pre>' if analysis else ""
+    # The file is markdown produced by a model. `render_markdown` escapes before it builds
+    # any tag, so nothing the model wrote can become markup.
+    html = f'<div class="md">{render_markdown(analysis)}</div>' if analysis else ""
 
     found: list[str] = []
     index = 1
@@ -399,7 +399,7 @@ def _render_suggestions(text: str | None) -> str:
             "Advisory: verify against the artifact before changing anything.</p>"
         )
         if content:
-            html += f'<pre class="prose">{_esc(content)}</pre>'
+            html += f'<div class="md">{render_markdown(content)}</div>'
         else:
             html += (
                 '<p class="muted">The model opened the section but wrote no guidance.</p>'
@@ -416,6 +416,201 @@ def _render_suggestions(text: str | None) -> str:
     return html
 
 
+
+# ---------------------------------------------------------------------------
+# Markdown, for the suggested fixes
+# ---------------------------------------------------------------------------
+
+_MD_FENCE = re.compile(r"^\s*```")
+_MD_HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
+_MD_HR = re.compile(r"^\s*(?:-{3,}|\*{3,}|_{3,})\s*$")
+_MD_QUOTE = re.compile(r"^\s*>\s?(.*)$")
+_MD_BULLET = re.compile(r"^(\s*)[-*+]\s+(.*)$")
+_MD_ORDERED = re.compile(r"^(\s*)(\d+)\.\s+(.*)$")
+
+
+def _md_inline(text: str) -> str:
+    """
+    Inline rules, applied to text that is ALREADY escaped.
+
+    Code spans are lifted out first and put back last, so a `**` inside a snippet stays
+    literal instead of turning into bold. The earlier version ran the two substitutions in
+    sequence, which paired a `**` inside a code span with one outside it and produced
+    broken markup.
+
+    Italics are deliberately not supported: a single `*` appears in real model output both
+    as a bullet and as a wildcard, and guessing wrong is worse than showing it.
+    """
+    spans: list[str] = []
+
+    def stash(match: re.Match) -> str:
+        spans.append(match.group(1))
+        return f"\x00{len(spans) - 1}\x00"
+
+    text = re.sub(r"`([^`]+)`", stash, text)
+    text = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", text)
+    text = re.sub(r"\x00(\d+)\x00", lambda m: f"<code>{spans[int(m.group(1))]}</code>", text)
+    return text
+
+
+def render_markdown(markdown: str) -> str:
+    """
+    Turn the model's markdown into HTML for the page.
+
+    Only the constructs listed above are recognised. Anything else is rendered as text,
+    which is the safe direction to fail in.
+    """
+    lines = (markdown or "").replace("\r\n", "\n").split("\n")
+
+    html: list[str] = []
+    paragraph: list[str] = []
+    # Open lists, outermost first: [(kind, [item, ...]), ...]. A list nests when the next
+    # item is indented more than the one before, which is what the model's sub-bullets are.
+    list_stack: list[list] = []
+    quote: list[str] = []
+    code: list[str] = []
+    in_code = False
+
+    def flush_paragraph() -> None:
+        if paragraph:
+            html.append(f"<p>{_md_inline(' '.join(paragraph))}</p>")
+            paragraph.clear()
+
+    def close_one() -> None:
+        """Close the innermost open list, nesting it into its parent's last item."""
+        kind, items = list_stack.pop()
+        markup = f"<{kind}>" + "".join(items) + f"</{kind}>"
+        if not list_stack:
+            html.append(markup)
+            return
+        parent_items = list_stack[-1][1]
+        if parent_items:
+            # `</li>` is five characters: reopen the parent item and nest inside it.
+            # Appending to the parent's item LIST instead is what turned nested lists into
+            # siblings in the first version.
+            parent_items[-1] = parent_items[-1][:-5] + markup + "</li>"
+        else:
+            # A level opened to fill a depth gap can be empty when a deeper one closes. Its
+            # own `<li>` was never created, so the child list becomes the item.
+            parent_items.append(f"<li>{markup}</li>")
+
+    def flush_list() -> None:
+        while list_stack:
+            close_one()
+
+    def flush_quote() -> None:
+        if quote:
+            body = " ".join(quote)
+            quote.clear()
+            html.append(f"<blockquote>{_md_inline(body)}</blockquote>")
+
+    def open_list(kind: str) -> None:
+        list_stack.append([kind, []])
+
+    def append_item(text: str, depth: int, kind: str) -> None:
+        """
+        Place one item, closing levels only when the depth goes back up.
+
+        Every open level stays on the stack, outermost first. Descending simply pushes a new
+        list, which stays open because the next item may be deeper still. Ascending closes
+        the levels that are no longer needed, nesting each into the parent's last item.
+
+        Only the same depth reuses the list already open, and a marker of the other kind (an
+        ordered item after bullets) starts a fresh list at that level.
+        """
+        while len(list_stack) - 1 > depth:
+            close_one()
+
+        # A real answer jumps a level (0 straight to 2), so fill any gap instead of
+        # assuming the depth arrives one step at a time.
+        while depth > len(list_stack) - 1:
+            open_list(kind)
+        if list_stack and list_stack[depth][0] != kind and not list_stack[depth][1]:
+            list_stack[depth][0] = kind
+
+        list_stack[depth][1].append(f"<li>{text}</li>")
+
+    for raw in lines:
+        line = raw.rstrip()
+
+        if _MD_FENCE.match(line):
+            if in_code:
+                html.append('<pre class="md-code"><code>' + "\n".join(code) + "</code></pre>")
+                code.clear()
+                in_code = False
+            else:
+                flush_paragraph()
+                flush_list()
+                flush_quote()
+                in_code = True
+            continue
+
+        if in_code:
+            code.append(_esc(raw))
+            continue
+
+        if not line.strip():
+            flush_paragraph()
+            flush_list()
+            flush_quote()
+            continue
+
+        if _MD_HR.match(line):
+            flush_paragraph()
+            flush_list()
+            flush_quote()
+            html.append("<hr>")
+            continue
+
+        heading = _MD_HEADING.match(line)
+        if heading:
+            flush_paragraph()
+            flush_list()
+            flush_quote()
+            level = min(len(heading.group(1)) + 1, 6)  # `##` -> h3, under the tab title
+            html.append(f"<h{level}>{_md_inline(_esc(heading.group(2)))}</h{level}>")
+            continue
+
+        quoted = _MD_QUOTE.match(line)
+        if quoted:
+            flush_paragraph()
+            flush_list()
+            quote.append(_esc(quoted.group(1)))
+            continue
+
+        bullet = _MD_BULLET.match(line)
+        ordered = _MD_ORDERED.match(line)
+        if bullet or ordered:
+            flush_paragraph()
+            flush_quote()
+            indent = len((bullet or ordered).group(1))
+            # The model indents a level at a time rather than by a fixed width: a real
+            # answer used 0, 3, 5 and 7 spaces. Dividing by two put level 1 at 1.5 and
+            # collapsed the structure, so each level gets its own band.
+            if indent >= 7:
+                depth = 3
+            elif indent >= 5:
+                depth = 2
+            elif indent >= 2:
+                depth = 1
+            else:
+                depth = 0
+            content = _md_inline(_esc((bullet or ordered).group(2 if bullet else 3)))
+            append_item(content, depth, "ul" if bullet else "ol")
+            continue
+
+        flush_list()
+        flush_quote()
+        paragraph.append(_esc(line.strip()))
+
+    # Anything still open at the end.
+    if in_code:
+        html.append('<pre class="md-code"><code>' + "\n".join(code) + "</code></pre>")
+    flush_paragraph()
+    flush_list()
+    flush_quote()
+
+    return "".join(html)
 
 # ---------------------------------------------------------------------------
 # The page
@@ -481,14 +676,33 @@ border:1px solid #42232a;border-radius:7px;padding:9px 11px;white-space:pre-wrap
 .bar{background:#232a34;height:9px;border-radius:999px;overflow:hidden}
 .bar i{display:block;height:100%;background:linear-gradient(90deg,#3f7ae0,#4c8dff)}
 .bar-value{font:500 13px ui-monospace,SFMono-Regular,Menlo,monospace;text-align:right}
-.prose{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;
-white-space:pre-wrap;word-break:break-word;font:13px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;margin:0}
+.md{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+padding:20px 24px;font-size:14.5px;line-height:1.65}
+.md>*:first-child{margin-top:0}
+.md>*:last-child{margin-bottom:0}
+.md h1,.md h2,.md h3,.md h4,.md h5,.md h6{margin:22px 0 10px;font-weight:650;letter-spacing:-.01em;line-height:1.3}
+.md h1{font-size:20px}.md h2{font-size:18px}.md h3{font-size:16px}
+.md h4,.md h5,.md h6{font-size:14.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.md p{margin:10px 0}
+.md ul,.md ol{margin:10px 0;padding-left:24px}
+.md li{margin:5px 0}
+.md li::marker{color:var(--muted)}
+.md strong{font-weight:650;color:#fff}
+.md code{background:#232a34;border:1px solid #2f3742;padding:1px 6px;border-radius:5px;
+font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:#cfe3ff;word-break:break-word}
+.md pre.md-code{background:#12161c;border:1px solid var(--line);border-radius:10px;
+padding:14px 16px;overflow-x:auto;margin:14px 0}
+.md pre.md-code code{background:none;border:none;padding:0;color:var(--fg);
+font:12.5px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre}
+.md blockquote{margin:14px 0;padding:2px 0 2px 16px;border-left:3px solid #3a4657;
+color:var(--muted)}
+.md hr{border:none;border-top:1px solid var(--line);margin:20px 0}
 .muted{color:var(--muted)}
 code{background:#232a34;padding:2px 6px;border-radius:5px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace}
 ul{margin:8px 0 0;padding-left:20px}li{margin:5px 0}
 @media print{body{background:#fff;color:#000}nav.tabs{display:none}
 section[role=tabpanel]{display:block!important;page-break-inside:avoid}
-.card,.table,.bars,.prose{background:#fff;border-color:#ccc}}
+.card,.table,.bars,.md{background:#fff;border-color:#ccc}}
 """
 
 SCRIPT = """
