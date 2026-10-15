@@ -898,5 +898,5 @@
             </bpmndi:BPMNEdge>
         </bpmndi:BPMNPlane>
     </bpmndi:BPMNDiagram>
-<!-- suggestions validation -->
+<!-- pr update validation -->
 </bpmn2:definitions>
