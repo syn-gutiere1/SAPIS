@@ -343,12 +343,29 @@ def _cmd_analyze_failures(args: argparse.Namespace) -> int:
         if context_path.is_file():
             context = context_path.read_text(encoding="utf-8", errors="replace")
 
+    # The risks the plan already identified, so the answer can close with how to fix
+    # or mitigate each one instead of only reacting to the failure.
+    risks = None
+    if args.risks:
+        risks_path = Path(args.risks)
+        if risks_path.is_file():
+            try:
+                risks = json.loads(risks_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                print(
+                    f"[WARN] Could not parse {risks_path}; continuing without the risks.",
+                    file=sys.stderr,
+                )
+
     iflow_name = iflow_file.stem if iflow_file else Path(args.source).stem
-    print(f"[1/2] Analysing the failure log for {iflow_name} ({len(test_output)} chars)")
+    print(
+        f"[1/2] Analysing the failure log for {iflow_name} "
+        f"({len(test_output)} chars, {len(risks) if isinstance(risks, list) else 0} risk(s))"
+    )
 
     try:
         suggestion = portkey_mod.suggest_fixes(
-            flow_xml, scripts, test_output, context=context, settings=settings
+            flow_xml, scripts, test_output, context=context, risks=risks, settings=settings
         )
     except portkey_mod.ConfigError as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)
@@ -411,6 +428,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Preamble placed before the logs and OUTSIDE the truncation window "
             "(analyze-failures mode). Explains how the harness executes a script, which "
             "the model cannot infer from the logs alone."
+        ),
+    )
+    parser.add_argument(
+        "--risks",
+        default=None,
+        help=(
+            "Path to risks.json (analyze-failures mode). Sent to the model so it can close "
+            "the answer with a `Fix Risks` section."
         ),
     )
     parser.add_argument(

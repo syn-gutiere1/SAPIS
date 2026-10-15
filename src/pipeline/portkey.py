@@ -393,6 +393,7 @@ def suggest_fixes(
     test_output: str,
     *,
     context: str = "",
+    risks: list | None = None,
     settings: Settings | None = None,
     client: Any | None = None,
     sleep=time.sleep,
@@ -420,8 +421,21 @@ def suggest_fixes(
         "Identify which layer a failure belongs to - the iFlow, a Groovy script, the "
         "generated test, or the test harness itself - and say so explicitly. Do not "
         "propose changes for a failure caused by the harness or by missing test data. "
-        f"Answer in the language corresponding to the ISO code {settings.language_code}."
+        "Answer in the language corresponding to the ISO code "
+        f"{settings.language_code}. "
+        "End your answer with a section titled exactly `## Fix Risks`, addressing the "
+        "risks listed in the request: for each one, say concretely how to fix it in the "
+        "iFlow or, when it cannot be fixed there, how to mitigate it. Name the step, "
+        "property or script involved. If a risk is already covered by the current design, "
+        "say so instead of inventing work."
     )
+
+    risks_block = ""
+    if risks:
+        risks_block = (
+            "--- RISKS IDENTIFIED FOR THIS FLOW ---\n"
+            f"{json.dumps(risks, ensure_ascii=False, indent=2)[:8_000]}\n\n"
+        )
 
     prompt = (
         f"{context}\n\n" if context.strip() else ""
@@ -430,11 +444,13 @@ def suggest_fixes(
         f"{flow_xml[:20_000]}\n\n"
         "--- GROOVY SCRIPTS ---\n"
         f"{json.dumps(scripts, ensure_ascii=False)[:10_000]}\n\n"
+        f"{risks_block}"
         "--- FAILURE LOGS ---\n"
         f"{test_output[-max_output_chars:]}\n\n"
         "Based on the failure logs, what is misconfigured in the SAP iflow or scripts? "
         "How do we fix it? If the evidence points at the harness, the generated test or "
-        "missing fixtures rather than the artifact, say that instead of proposing an edit."
+        "missing fixtures rather than the artifact, say that instead of proposing an edit.\n\n"
+        "Finish with `## Fix Risks`: how to fix or mitigate each risk listed above."
     )
 
     resolved_client = create_client(settings, client=client)

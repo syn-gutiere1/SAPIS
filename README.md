@@ -501,14 +501,26 @@ python scripts/build_dashboard.py \
 ```
 
 It is written to `CI-CD/reports/<iFlow>/dashboard.html` and committed with the rest
-of the evidence. The tabs are Overview, Tests, Scenarios, Risks, Coverage and
-Suggested fixes; the hash in the URL selects a tab, so a link can point at one.
+of the evidence. The tabs are **Overview, Scenarios, Tests, Coverage, Risks, Suggested
+fixes**; the hash in the URL selects a tab, so a link can point at one.
+
+The order is the reading order. The plan comes before the results, because the scenarios
+say what the run was meant to demonstrate; coverage follows the results; and the page
+closes with the risks and then the suggested fixes, so the reviewer is left with what
+still needs action rather than with the raw output.
 
 The **Tests** tab shows both suites separately, each with its own counters, because
 they are separate verdicts: the generated suite simulates the flow in Python while the
 harness compiles and executes the real scripts. The overall verdict is the worse of
 the two, so a green suite with a red harness reads as a failed run rather than as
 "5 passed, 0 failed" with the script's result nowhere on the page.
+
+The **Suggested fixes** tab ends with a **Fix Risks** section: the model is given the
+`risks.json` of the run and asked to close its answer with how to fix or mitigate each
+identified risk, naming the step, property or script involved. That section gets its own
+heading so it is not buried in the tail of a long document. If the model omits it - or
+opens it and writes nothing - the page says so, because a silent omission would look like
+"no risks to fix".
 
 ### Getting the dashboard after a push
 
@@ -596,6 +608,11 @@ real defect instead of fixing it. Check it against the artifact. It is also give
 preamble explaining how the harness runs a script, so that it judges which layer a
 failure belongs to; if it still proposes a change that cannot apply to the iFlow,
 that is a gap worth reporting.
+
+The `Fix Risks` section at the end is a hypothesis too, and it is grounded: the run's
+`risks.json` is passed to the model, so the section answers the risks this artifact
+actually carries rather than generic advice. Use it to decide what to do about them -
+including "nothing, this is already covered", which the model is told it may answer.
 
 ---
 
