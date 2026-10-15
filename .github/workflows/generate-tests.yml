@@ -256,9 +256,13 @@ jobs:
           python scripts/check_generated_tests.py "$TESTS_DIR/test_flow.py"
 
       # --- pytest -----------------------------------------------------------
+      # NOTE: no `continue-on-error`. With it, a failing step reports
+      # `conclusion: success` in the job API - neither `outcome` nor `conclusion`
+      # records the failure - so nothing downstream can tell that the suite failed.
+      # The evidence still survives a failure because every step after this one that
+      # must run anyway is guarded with `if: always()`.
       - name: Run pytest
         id: pytest
-        continue-on-error: true
         run: |
           set -o pipefail
           mkdir -p "$REPORTS_DIR"
@@ -298,10 +302,13 @@ jobs:
           echo "$RUNNER_TEMP/groovy-${GROOVY_VERSION}/bin" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/groovy-${GROOVY_VERSION}/bin/groovy" --version
 
+      # NOTE: no `continue-on-error` here either. It would make a red harness report
+      # `conclusion: success`, which is how the suggested-fixes step ended up skipping
+      # the one failure this repository actually produces. The reports and the evidence
+      # survive because the steps that publish them use `if: always()`.
       - name: Run the Groovy harness against the real scripts
         id: groovy
         if: matrix.has_iflow_change || contains(join(matrix.changed_files, ' '), '/script/')
-        continue-on-error: true
         run: |
           set -o pipefail
           mkdir -p "$REPORTS_DIR"
@@ -364,10 +371,10 @@ jobs:
       # It is advisory: the step may not fail the job, and the generated file is
       # committed with the rest of the evidence.
       #
-      # `conclusion`, not `outcome`: both suites run with `continue-on-error: true`, for
-      # which `outcome` is always `success` - it says the step was allowed to fail, not
-      # that it did. Using `outcome` here meant this step never ran when the harness
-      # failed, which is the only failure this repository actually produces.
+      # `conclusion` on the two suite steps, because neither carries
+      # `continue-on-error` any more. That flag is what made a red suite report
+      # `conclusion: success`, so this step could not tell that anything had failed -
+      # it skipped the only failure this repository produces.
       - name: Analyse the failure and suggest fixes
         id: suggestions
         if: steps.pytest.conclusion == 'failure' || steps.groovy.conclusion == 'failure'
@@ -507,7 +514,11 @@ jobs:
           fail-on-error: false
 
       - name: Publish the Groovy results in Checks
-        if: always() && steps.groovy.conclusion != 'skipped'
+        # `outcome` is the right field here: the step no longer has
+        # `continue-on-error`, so a red harness gives `conclusion: failure` and would
+        # still need its report published. What must be excluded is the case where the
+        # step never ran at all, which is what `outcome == 'skipped'` identifies.
+        if: always() && steps.groovy.outcome != 'skipped'
         continue-on-error: true
         uses: dorny/test-reporter@v1
         with:
@@ -563,11 +574,10 @@ jobs:
           # run would keep committing a stale diagnosis of an already-fixed failure,
           # dated to an older commit and looking entirely current.
           #
-          # This tests `conclusion`, NOT `outcome`. The two suites run with
-          # `continue-on-error: true`, and for such a step `outcome` is always
-          # `success` - it records whether the step was allowed to fail, not whether it
-          # did. `conclusion` carries the real verdict. Testing `outcome` here deleted
-          # the suggestions on the very run that produced them.
+          # This tests `conclusion`, which carries the real verdict now that neither
+          # suite uses `continue-on-error`. It previously tested `outcome`; with that
+          # flag set, `outcome` was always `success`, so this step decided a red run
+          # "had no failures" and deleted the suggestions it had just been given.
           rm -f "$REPORTS_DIR/failure_context.md" "$REPORTS_DIR/failure_logs.txt"
           if [ "${{ steps.pytest.conclusion }}" != "failure" ] && [ "${{ steps.groovy.conclusion }}" != "failure" ]; then
             if [ -f "$REPORTS_DIR/ai_fix_suggestions.md" ]; then
@@ -639,9 +649,10 @@ jobs:
           echo "::warning::Could not commit the artifacts for ${{ matrix.iflow }}. The evidence is still in the artifact $ARTIFACT_NAME."
           exit 0
 
-      # `continue-on-error` above keeps the reports and the evidence even when
-      # the tests fail; the verdict is applied here, after everything was
-      # published.
+      # The suites are not allowed to fail silently: `continue-on-error` is gone, so a
+      # red suite fails the step. The reports and the evidence still survive, because
+      # every step that publishes them is guarded with `if: always()`. These two steps
+      # keep the failure message pointing at the artifact.
       - name: Fail when the generated tests failed
         if: steps.pytest.conclusion == 'failure'
         run: |
