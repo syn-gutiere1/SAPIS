@@ -1,0 +1,23 @@
+{
+  "target_coverage_percent": 100,
+  "coverage_by_component": {
+    "SOAP Sender Adapter (MessageFlow_114)": "100%",
+    "Set Message headers Enricher (CallActivity_4)": "100%",
+    "Multicast Gateway (ParallelGateway_74)": "100%",
+    "Exclusive Router Gateway (ExclusiveGateway_80)": "100%",
+    "SalesOrder Branch Mapping (CallActivity_102)": "100%",
+    "Generic Headers Script (CallActivity_13 & CallActivity_71)": "100%",
+    "Default Escalation End Event (EndEvent_11)": "100%",
+    "Exception Subprocess & Payload Logger (SubProcess_91, CallActivity_97, CallActivity_100, EndEvent_95)": "100%",
+    "Orphaned Flow Steps (CallActivity_86, CallActivity_77)": "0%"
+  },
+  "uncovered_paths": [
+    "CallActivity_86 (Content Modifier for OrganizationId extraction) has no incoming or outgoing sequence flows in the BPMN model.",
+    "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) has no sequence flows connected in the BPMN model and is unreachable during runtime."
+  ],
+  "coverage_recommendations": [
+    "Reconnect CallActivity_86 and CallActivity_77 into the main execution line between CallActivity_4 and ExclusiveGateway_80 so that OrderCodeValid header is set prior to routing.",
+    "Update router conditions to evaluate ${header.OrderCodeValid} = 'true' instead of unlinked externalized strings.",
+    "Once connected, re-run test suite to attain complete 100% executable coverage over all BPMN components."
+  ]
+}

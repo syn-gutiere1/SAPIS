@@ -1,0 +1,56 @@
+{
+  "iflow": "SI_Glovia_SalesOrderCreate",
+  "source": "CI-CD/iflows/SI_Glovia_SalesOrderCreate",
+  "source_relative": "src/main/resources/scenarioflows/integrationflow/SI_Glovia_SalesOrderCreate.iflw",
+  "iflow_sha256": "dc0205587c5bd9c4715c2cfa9c710a49305dc5e21d3f58ccdfcae3a2b0ccefb7",
+  "scripts_sha256": {
+    "script/GLOVIA_Conditioncheck_Salesorder_Create.groovy": "ac97a6829314a73c8d8203074bb7ca8ecc2b85ba12e0085e9f0a7bef39e1a28b",
+    "script/Interface_Generic_Headers.groovy": "668d03bddd37e6c742215eceef1bcf09a69fbf128a45e4ee2cf17f66e0244181",
+    "script/Log_Payload (1).gsh": "1b527fed94079379045dad4902bb66381edcdb8df32d115c6b829520c9d844a9"
+  },
+  "scripts_count": 3,
+  "outputs": {
+    "tests": "CI-CD/tests/SI_Glovia_SalesOrderCreate",
+    "plans": "CI-CD/test-plans/SI_Glovia_SalesOrderCreate"
+  },
+  "artifacts": {
+    "scenarios": 6,
+    "risks": 4,
+    "testdata_files": 4,
+    "files": [
+      "cases.json",
+      "testdata/sales_order_create_payload.xml",
+      "testdata/sales_order_return_payload.xml",
+      "testdata/unmatched_order_payload.xml",
+      "testdata/malformed_payload.xml",
+      "test_flow.py",
+      "risks.json",
+      "coverage.json",
+      "raw_llm_output.json"
+    ],
+    "rejected": []
+  },
+  "llm": {
+    "model": "gemini-3.8-flash",
+    "base_url": "https://portkey.syngenta.com/v1",
+    "temperature": 0.2,
+    "language_code": "en_US",
+    "prompt_tokens": 15087,
+    "completion_tokens": 8444,
+    "total_tokens": 23531
+  },
+  "prompt": {
+    "file": "prompt/prompt_template.txt",
+    "sha256": "ce4e7caea2fdadc680d553b8326723221af704322801658413a1742398e7364a"
+  },
+  "truncated": [],
+  "attempts": 1,
+  "duration_seconds": 46.141,
+  "generated_at": "2026-10-15T03:48:17Z",
+  "environment": {
+    "github_run_id": "38678053921",
+    "github_sha": "3452aa2c3edb1757998e8e1960a305fbd5a9ce2f",
+    "github_ref": "refs/heads/sap-is",
+    "github_repository": "syn-gutiere1/SAPIS"
+  }
+}

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Test evidence — SI_Glovia_SalesOrderCreate</title>
+<style>
+:root{--bg:#0f1216;--panel:#171b21;--panel2:#1e232b;--line:#2a313b;--fg:#e6e9ee;
+--muted:#98a2b3;--accent:#4c8dff;--ok:#2fbf71;--bad:#ef4d5a;--warn:#e8a33d}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+header.top{padding:28px 32px 20px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#1a1f27,#12161b)}
+header.top h1{margin:0;font-size:22px;font-weight:650;letter-spacing:-.01em}
+header.top p{margin:6px 0 0;color:var(--muted);font-size:13px}
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px 64px}
+nav.tabs{display:flex;gap:4px;flex-wrap:wrap;padding:14px 32px 0;border-bottom:1px solid var(--line);
+position:sticky;top:0;background:rgba(15,18,22,.96);backdrop-filter:blur(8px);z-index:5}
+nav.tabs button{appearance:none;border:1px solid transparent;border-bottom:none;background:transparent;
+color:var(--muted);padding:10px 16px;border-radius:9px 9px 0 0;cursor:pointer;font-size:14px;font-weight:550}
+nav.tabs button:hover{color:var(--fg);background:#1b2029}
+nav.tabs button[aria-selected=true]{color:var(--fg);background:var(--panel);border-color:var(--line);position:relative;top:1px}
+nav.tabs button .count{margin-left:7px;font-size:11px;color:var(--muted);background:#232a34;padding:2px 7px;border-radius:999px}
+section[role=tabpanel]{display:none;padding-top:24px}
+section[role=tabpanel].active{display:block}
+h2{margin:0 0 4px;font-size:18px;font-weight:650;letter-spacing:-.01em}
+h3{margin:0;font-size:15px;font-weight:600}
+h4{margin:22px 0 8px;font-size:13px;font-weight:650;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.sub{color:var(--muted);font-size:13px;margin:0 0 20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+.card header{display:flex;gap:10px;align-items:baseline;margin-bottom:10px}
+.badge{font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--accent);
+background:#16233a;border:1px solid #24395c;padding:5px 8px;border-radius:6px;white-space:nowrap}
+.field{margin-top:10px}
+.field .k{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:3px}
+.field p{margin:0;font-size:14px}
+.kv{display:flex;justify-content:space-between;gap:18px;padding:9px 2px;border-bottom:1px solid #222833}
+.kv .k{color:var(--muted);font-size:13px}
+.kv .v{font:500 13px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;text-align:right;word-break:break-word}
+.table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.table th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);
+padding:11px 14px;background:#1b2029;border-bottom:1px solid var(--line)}
+.table td{padding:12px 14px;border-bottom:1px solid #222833;vertical-align:top;font-size:14px}
+.table tr:last-child td{border-bottom:none}
+.table td.strong{font-weight:600}
+.table.tests tr.detail td{padding:0 14px 10px;border-bottom:1px solid #222833}
+.table.tests tr.detail:last-child td{border-bottom:none}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:9px;background:var(--muted)}
+.dot.passed{background:var(--ok)}.dot.failed,.dot.error{background:var(--bad)}.dot.skipped{background:var(--warn)}
+td.status{text-align:right;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+.failure{font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#ffb4ba;background:#2a1619;
+border:1px solid #42232a;border-radius:7px;padding:9px 11px;white-space:pre-wrap;margin:6px 0}
+.stats{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:22px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:12px 18px;min-width:96px}
+.stat span{display:block;font-size:21px;font-weight:650}
+.stat label{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.stat.ok span{color:var(--ok)}.stat.bad span{color:var(--bad)}.stat.warn span{color:var(--warn)}
+.callout{background:#16233a;border:1px solid #24395c;border-radius:10px;padding:13px 15px;margin-bottom:20px;font-size:14px}
+.callout.warn{background:#2a2113;border-color:#4d3a17;color:#ffdca8}
+.bars{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+.bar-row{display:grid;grid-template-columns:180px 1fr 52px;gap:12px;align-items:center;padding:6px 0}
+.bar-label{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis}
+.bar{background:#232a34;height:9px;border-radius:999px;overflow:hidden}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,#3f7ae0,#4c8dff)}
+.bar-value{font:500 13px ui-monospace,SFMono-Regular,Menlo,monospace;text-align:right}
+.prose{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;
+white-space:pre-wrap;word-break:break-word;font:13px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;margin:0}
+.muted{color:var(--muted)}
+code{background:#232a34;padding:2px 6px;border-radius:5px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace}
+ul{margin:8px 0 0;padding-left:20px}li{margin:5px 0}
+@media print{body{background:#fff;color:#000}nav.tabs{display:none}
+section[role=tabpanel]{display:block!important;page-break-inside:avoid}
+.card,.table,.bars,.prose{background:#fff;border-color:#ccc}}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Test evidence — SI_Glovia_SalesOrderCreate</h1>
+  <p>Generated by the SAP Integration Suite test pipeline. Self-contained: no external
+  resources, readable offline. Verdict: <strong>passed</strong>.</p>
+</header>
+<nav class="tabs" role="tablist"><button role="tab" data-target="tab-overview" aria-selected="false">Overview</button><button role="tab" data-target="tab-tests" aria-selected="false">Tests<span class="count">6</span></button><button role="tab" data-target="tab-scenarios" aria-selected="false">Scenarios<span class="count">6</span></button><button role="tab" data-target="tab-risks" aria-selected="false">Risks<span class="count">4</span></button><button role="tab" data-target="tab-coverage" aria-selected="false">Coverage</button><button role="tab" data-target="tab-fixes" aria-selected="false">Suggested fixes</button></nav>
+<div class="wrap"><section id="tab-overview" role="tabpanel" aria-label="Overview">
+            <h2>Overview</h2>
+            <p class="sub">Provenance of this run and how the suite performed.</p>
+            <div class="kv"><span class="k">iFlow</span><span class="v">SI_Glovia_SalesOrderCreate</span></div><div class="kv"><span class="k">Commit</span><span class="v">3452aa2c3edb</span></div><div class="kv"><span class="k">Run</span><span class="v">38678053921</span></div><div class="kv"><span class="k">Model</span><span class="v">gemini-3.8-flash</span></div><div class="kv"><span class="k">Prompt tokens</span><span class="v">15087</span></div><div class="kv"><span class="k">Completion tokens</span><span class="v">8444</span></div><div class="kv"><span class="k">Total tokens</span><span class="v">23531</span></div><div class="kv"><span class="k">Attempts</span><span class="v">1</span></div><div class="kv"><span class="k">Duration</span><span class="v">46.141s</span></div><div class="kv"><span class="k">Scenario count</span><span class="v">6</span></div><div class="kv"><span class="k">Risk count</span><span class="v">4</span></div><div class="kv"><span class="k">Testdata files</span><span class="v">4</span></div><div class="kv"><span class="k">prompt sha256</span><span class="v">ce4e7caea2fdadc6</span></div><div class="kv"><span class="k">iflow sha256</span><span class="v">dc0205587c5bd9c4</span></div><div class="kv"><span class="k">Generated at</span><span class="v">2026-10-15T03:48:17Z</span></div>
+        </section><section id="tab-tests" role="tabpanel" aria-label="Tests"><div class="stats"><div class="stat"><span>6</span><label>tests</label></div><div class="stat ok"><span>6</span><label>passed</label></div><div class="stat bad"><span>0</span><label>failed</label></div><div class="stat bad"><span>0</span><label>errors</label></div><div class="stat warn"><span>0</span><label>skipped</label></div><div class="stat"><span>0.43s</span><label>time</label></div></div><table class='table tests'><tbody><tr class='passed'><td><span class='dot passed'></span>CI-CD.tests.SI_Glovia_SalesOrderCreate.test_flow::test_sales_order_creation_happy_path</td><td class='status'>passed</td></tr><tr class='detail'><td colspan='2'></td></tr><tr class='passed'><td><span class='dot passed'></span>CI-CD.tests.SI_Glovia_SalesOrderCreate.test_flow::test_sales_order_return_route</td><td class='status'>passed</td></tr><tr class='detail'><td colspan='2'></td></tr><tr class='passed'><td><span class='dot passed'></span>CI-CD.tests.SI_Glovia_SalesOrderCreate.test_flow::test_unmatched_route_triggers_escalation</td><td class='status'>passed</td></tr><tr class='detail'><td colspan='2'></td></tr><tr class='passed'><td><span class='dot passed'></span>CI-CD.tests.SI_Glovia_SalesOrderCreate.test_flow::test_malformed_xml_invokes_exception_subprocess</td><td class='status'>passed</td></tr><tr class='detail'><td colspan='2'></td></tr><tr class='passed'><td><span class='dot passed'></span>CI-CD.tests.SI_Glovia_SalesOrderCreate.test_flow::test_flow_handles_network_timeout</td><td class='status'>passed</td></tr><tr class='detail'><td colspan='2'></td></tr><tr class='passed'><td><span class='dot passed'></span>CI-CD.tests.SI_Glovia_SalesOrderCreate.test_flow::test_unauthorized_request_rejected</td><td class='status'>passed</td></tr><tr class='detail'><td colspan='2'></td></tr></tbody></table></section><section id="tab-scenarios" role="tabpanel" aria-label="Scenarios"><div class="grid"><article class="card"><header><span class="badge">TC_GLOVIA_SO_01</span><h3>Standard Sales Order Processing (Happy Path)</h3></header><div class="field"><span class="k">Trigger</span><p>Inbound SOAP request to /Glovia_SalesOrder containing valid Salesforce outbound message notification with standard order type (e.g., YORB).</p></div><div class="field"><span class="k">Expected outcome</span><p>Message accepted with HTTP 202/200; properties populated (InputPayload); router directs to SalesOrder branch (CallActivity_102); mapping executes; generic headers script (CallActivity_13) enriches message log; process terminates cleanly at EndEvent_2.</p></div><div class="field"><span class="k">Validates</span><p>ExclusiveGateway_80 (Route 1), CallActivity_4, CallActivity_102, CallActivity_13, and EndEvent_2.</p></div></article><article class="card"><header><span class="badge">TC_GLOVIA_RET_02</span><h3>Sales Order Return Processing</h3></header><div class="field"><span class="k">Trigger</span><p>Inbound SOAP request with order payload satisfying return condition ({{Glovia_Route2_ReturnSalesOrder}}).</p></div><div class="field"><span class="k">Expected outcome</span><p>Router selects branch SequenceFlow_113 to CallActivity_71 (SO Return create); generic headers logged; process ends cleanly at EndEvent_9.</p></div><div class="field"><span class="k">Validates</span><p>ExclusiveGateway_80 (Route 2 SequenceFlow_113), CallActivity_71, and EndEvent_9.</p></div></article><article class="card"><header><span class="badge">TC_GLOVIA_ESC_03</span><h3>Unmatched Routing Condition - Escalation End</h3></header><div class="field"><span class="k">Trigger</span><p>Inbound SOAP request where giic_OrderTypeCode__c matches neither sales order nor return routing condition expressions.</p></div><div class="field"><span class="k">Expected outcome</span><p>Router defaults to SequenceFlow_110 targeting EndEvent_11; EscalationEndEvent triggered with ErrorCode &#x27;RoutingConditionNotMet&#x27;.</p></div><div class="field"><span class="k">Validates</span><p>ExclusiveGateway_80 default route and EndEvent_11 escalation event execution.</p></div></article><article class="card"><header><span class="badge">TC_GLOVIA_ERR_04</span><h3>Mapping Failure &amp; Exception Subprocess Handling</h3></header><div class="field"><span class="k">Trigger</span><p>Inbound SOAP request with malformed inner XML or invalid schema that triggers an exception in Message Mapping (CallActivity_102).</p></div><div class="field"><span class="k">Expected outcome</span><p>Flow catches error via StartEvent_92 in SubProcess_91; CallActivity_97 restores original payload from ${property.InputPayload}; CallActivity_100 executes Log_Payload (1).gsh; terminates at EndEvent_95.</p></div><div class="field"><span class="k">Validates</span><p>SubProcess_91, StartEvent_92, CallActivity_97, CallActivity_100, and EndEvent_95.</p></div></article><article class="card"><header><span class="badge">TC_GLOVIA_TIMEOUT_05</span><h3>Transient Transport Failure and Timeout Simulation</h3></header><div class="field"><span class="k">Trigger</span><p>Network interruption or downstream connectivity failure causing timeout during adapter dispatch.</p></div><div class="field"><span class="k">Expected outcome</span><p>Client detects request timeout; exception handling path or adapter timeout status validated.</p></div><div class="field"><span class="k">Validates</span><p>SOAP receiver/adapter resilience under network timeout conditions.</p></div></article><article class="card"><header><span class="badge">TC_GLOVIA_AUTH_06</span><h3>Unauthorized Sender Invocation (Role-Based Access Validation)</h3></header><div class="field"><span class="k">Trigger</span><p>Inbound SOAP invocation without required &#x27;ESBMessaging.send&#x27; role or invalid client credentials.</p></div><div class="field"><span class="k">Expected outcome</span><p>Runtime rejects request with HTTP 401 Unauthorized or 403 Forbidden before entering Process_1.</p></div><div class="field"><span class="k">Validates</span><p>MessageFlow_114 SOAP adapter configuration (userRole=ESBMessaging.send).</p></div></article></div></section><section id="tab-risks" role="tabpanel" aria-label="Risks"><table class='table'><thead><tr><th>Risk</th><th>Consequence</th><th>Mitigation</th></tr></thead><tbody><tr><td class='strong'>Orphaned BPMN activities (CallActivity_86 Content Modifier and CallActivity_77 Groovy Script)</td><td>The validation script &#x27;GLOVIA_Conditioncheck_Salesorder_Create.groovy&#x27; and XPath extraction of OrganizationId are disconnected from the execution path. Invalid order codes will not be flagged, resulting in bad data reaching downstream receivers.</td><td>Unit tests assert order code validation outcomes; integration suite flags orphaned nodes as quality defects before deployment.</td></tr><tr><td class='strong'>Unmatched routing default condition escalates via Escalation End (EndEvent_11)</td><td>Because the SOAP inbound adapter is configured as OneWay with &#x27;returnExceptionToSender=false&#x27;, messages with unrecognized order types terminate abruptly without informing the sender system, causing silent order loss.</td><td>Automated scenario TC_GLOVIA_ESC_03 monitors escalation event trigger and requires alert logging or DLQ persistence.</td></tr><tr><td class='strong'>Property &#x27;InputPayload&#x27; stores complete message body (${in.body}) in memory</td><td>High-volume or large attachment payloads stored in exchange properties lead to Java Virtual Machine (JVM) heap memory pressure and potential OutOfMemoryError in worker nodes.</td><td>Impose body size constraint (enforced at 40MB by SOAP adapter settings) and mock large-message threshold tests.</td></tr><tr><td class='strong'>Runtime failure of externalized routing parameters ({{Glovia_Route_SalesOrder}} and {{Glovia_Route2_ReturnSalesOrder}})</td><td>Misconfigured or missing tenant parameters will result in XML condition evaluation syntax errors, dropping all messages into the escalation subprocess.</td><td>Suite validates parameter injection into gateway conditions across deployment configuration profiles.</td></tr></tbody></table></section><section id="tab-coverage" role="tabpanel" aria-label="Coverage"><div class="callout">Target coverage from the model: <strong>100%</strong>. This is an estimate produced by the language model, not a measured value; measured coverage would come from <code>pytest-cov</code>.</div><div class="bars"><div class="bar-row"><span class="bar-label">SOAP Sender Adapter (MessageFlow_114)</span><span class="bar"><i style="width:100.0%"></i></span><span class="bar-value">100%</span></div><div class="bar-row"><span class="bar-label">Set Message headers Enricher (CallActivity_4)</span><span class="bar"><i style="width:100.0%"></i></span><span class="bar-value">100%</span></div><div class="bar-row"><span class="bar-label">Multicast Gateway (ParallelGateway_74)</span><span class="bar"><i style="width:100.0%"></i></span><span class="bar-value">100%</span></div><div class="bar-row"><span class="bar-label">Exclusive Router Gateway (ExclusiveGateway_80)</span><span class="bar"><i style="width:100.0%"></i></span><span class="bar-value">100%</span></div><div class="bar-row"><span class="bar-label">SalesOrder Branch Mapping (CallActivity_102)</span><span class="bar"><i style="width:100.0%"></i></span><span class="bar-value">100%</span></div><div class="bar-row"><span class="bar-label">Generic Headers Script (CallActivity_13 &amp; CallActivity_71)</span><span class="bar"><i style="width:100.0%"></i></span><span class="bar-value">100%</span></div><div class="bar-row"><span class="bar-label">Default Escalation End Event (EndEvent_11)</span><span class="bar"><i style="width:100.0%"></i></span><span class="bar-value">100%</span></div><div class="bar-row"><span class="bar-label">Exception Subprocess &amp; Payload Logger (SubProcess_91, CallActivity_97, CallActivity_100, EndEvent_95)</span><span class="bar"><i style="width:100.0%"></i></span><span class="bar-value">100%</span></div><div class="bar-row"><span class="bar-label">Orphaned Flow Steps (CallActivity_86, CallActivity_77)</span><span class="bar"><i style="width:0.0%"></i></span><span class="bar-value">0%</span></div></div><h4>Uncovered paths</h4><ul><li>CallActivity_86 (Content Modifier for OrganizationId extraction) has no incoming or outgoing sequence flows in the BPMN model.</li><li>CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) has no sequence flows connected in the BPMN model and is unreachable during runtime.</li></ul><h4>Recommendations</h4><ul><li>Reconnect CallActivity_86 and CallActivity_77 into the main execution line between CallActivity_4 and ExclusiveGateway_80 so that OrderCodeValid header is set prior to routing.</li><li>Update router conditions to evaluate ${header.OrderCodeValid} = &#x27;true&#x27; instead of unlinked externalized strings.</li><li>Once connected, re-run test suite to attain complete 100% executable coverage over all BPMN components.</li></ul></section><section id="tab-fixes" role="tabpanel" aria-label="Suggested fixes"><p class="muted">No suggested fixes for this run. The file is produced only when the generated suite fails.</p></section></div>
+<script>
+(function(){
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('nav.tabs button'));
+  var panels = Array.prototype.slice.call(document.querySelectorAll('section[role=tabpanel]'));
+  function select(id, push){
+    tabs.forEach(function(t){ t.setAttribute('aria-selected', String(t.dataset.target === id)); });
+    panels.forEach(function(p){ p.classList.toggle('active', p.id === id); });
+    if (push && history.replaceState) { history.replaceState(null, '', '#' + id); }
+  }
+  tabs.forEach(function(t){
+    t.addEventListener('click', function(){ select(t.dataset.target, true); });
+  });
+  var initial = (location.hash || '').replace('#','');
+  var known = panels.some(function(p){ return p.id === initial; });
+  select(known ? initial : (panels[0] && panels[0].id), false);
+})();
+</script>
+</body>
+</html>
