@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <ns1:notifications xmlns:ns1="http://soap.sforce.com/2005/09/outbound" xmlns:ns2="urn:sobject.enterprise.soap.sforce.com">
+      <ns1:Notification>
+        <ns1:Id>04k000000009999ZZZ</ns1:Id>
+        <ns1:sObject>
+          <ns2:Id>a0100000000zzzzZZZ</ns2:Id>
+          <ns2:giic_OrderTypeCode__c>UNKNOWN_TYPE</ns2:giic_OrderTypeCode__c>
+          <ns2:OrderNumber__c>UNK-0000</ns2:OrderNumber__c>
+        </ns1:sObject>
+      </ns1:Notification>
+    </ns1:notifications>
+  </SOAP:Body>
+</SOAP:Envelope>

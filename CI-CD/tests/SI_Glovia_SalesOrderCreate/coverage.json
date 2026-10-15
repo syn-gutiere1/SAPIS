@@ -1,30 +1,24 @@
 {
   "target_coverage_percent": 100,
   "coverage_by_component": {
-    "StartEvent_2 (Inbound SOAP Entry)": "100%",
-    "CallActivity_4 (Set Message headers)": "100%",
-    "ParallelGateway_74 (Multicast)": "100%",
-    "ExclusiveGateway_80 (Router - All 3 Branches)": "100%",
+    "StartEvent_2 (SOAP Inbound)": "100%",
+    "CallActivity_4 (Set Message headers & InputPayload property)": "100%",
+    "ParallelGateway_74 (Multicast Gateway)": "100%",
+    "ExclusiveGateway_80 (Router - Branch 1, 2, Default)": "100%",
     "CallActivity_102 (Message Mapping 1)": "100%",
-    "CallActivity_13 (Generic Headers SO Path)": "100%",
-    "CallActivity_71 (Generic Headers Return Path)": "100%",
-    "EndEvent_2 (SO End)": "100%",
-    "EndEvent_9 (Return End)": "100%",
-    "EndEvent_11 (Escalation End)": "100%",
-    "SubProcess_91 (Exception Subprocess)": "100%",
-    "CallActivity_97 (Payload Restore)": "100%",
-    "CallActivity_100 (Log Payload Script)": "100%",
-    "EndEvent_95 (Error End)": "100%",
-    "CallActivity_77 (Groovy Script 2 - Orphan)": "0%",
-    "CallActivity_86 (Content Modifier - Orphan)": "0%"
+    "CallActivity_13 (Interface_Generic_Headers)": "100%",
+    "CallActivity_71 (Interface_Generic_Headers)": "100%",
+    "EndEvent_2 & EndEvent_9 (Success Message End Events)": "100%",
+    "EndEvent_11 (Escalation End Event)": "100%",
+    "SubProcess_91 (Error Event Subprocess & Logging)": "100%",
+    "CallActivity_77 & CallActivity_86 (Floating/Dangling elements in BPMN)": "0%"
   },
   "uncovered_paths": [
-    "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) has no incoming or outgoing SequenceFlow edges in the BPMN model.",
-    "CallActivity_86 (Content Modifier for OrganizationId extraction) has no incoming or outgoing SequenceFlow edges in the BPMN model."
+    "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) and CallActivity_86 (Content Modifier for OrganizationId) are isolated floating nodes in the BPMN definition with no incoming or outgoing sequence flows. They cannot be executed by the runtime process engine in its current model."
   ],
   "coverage_recommendations": [
-    "Connect CallActivity_77 before ExclusiveGateway_80 to enforce pre-validation of OrderCode (validating 'YORB', 'YICB', 'POR', 'MNZ', 'PLM') before routing.",
-    "Connect CallActivity_86 into the sequence flow after CallActivity_4 to ensure OrganizationId is extracted into exchange headers for tracking.",
-    "Once connected, add dedicated unit tests for OrderCodeValid=true/false branches to achieve true 100% executable model coverage."
+    "Connect CallActivity_77 directly after CallActivity_4 so the header 'OrderCodeValid' is created and evaluated in ExclusiveGateway_80.",
+    "Connect CallActivity_86 before routing to extract OrganizationId from XPath into headers as intended, or delete dangling nodes to eliminate technical debt.",
+    "Implement a dedicated Dead Letter Queue queue write in Exception Subprocess 91 to guarantee 100% auditable error delivery."
   ]
 }

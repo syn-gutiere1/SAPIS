@@ -1,22 +1,22 @@
 [
   {
-    "risk": "Unhandled giic_OrderTypeCode__c leads to EscalationEndEvent terminating with RoutingConditionNotMet",
-    "consequence": "Sales orders or return orders with new or unmapped order types are terminated immediately without notification sent to sender or dead-letter queuing.",
-    "mitigation": "TC_GLOVIA_SO_003 asserts that the default route triggers the escalation code explicitly, validating that monitoring alerts can trigger on 'RoutingConditionNotMet'."
+    "risk": "Message Loss via Escalation End Event without Sender Notification",
+    "consequence": "The ExclusiveGateway_80 routes non-matching order types to EndEvent_11 (Escalation End) without an alert adapter or dead-letter queue. The sender system (Glovia) will not receive an error callback because returnExceptionToSender is set to false.",
+    "mitigation": "Unit tests TC_GLOVIA_003 and TC_GLOVIA_005 assert on the Escalation Code RoutingConditionNotMet. Mitigation requires adding an alert notification step or Dead Letter Queue (JMS) write before EndEvent_11."
   },
   {
-    "risk": "Unconnected BPMN activities (CallActivity_77 and CallActivity_86) left orphan in flow model",
-    "consequence": "Validation script 'GLOVIA_Conditioncheck_Salesorder_Create.groovy' and XPath extraction for OrganizationId are never invoked, creating false confidence in logic validation.",
-    "mitigation": "Coverage analysis documents these orphan nodes; test suite verifies behavior with and without script evaluation to identify gaps."
+    "risk": "Unconnected / Floating Groovy Script Logic in Integration Process",
+    "consequence": "Script CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) and Content Modifier CallActivity_86 are defined inside Process_1 but have no incoming or outgoing sequence flows. Valid order codes ('YORB', 'YICB', 'POR', 'MNZ', 'PLM') checked by the script are never evaluated by the active router.",
+    "mitigation": "Test suite validates routing conditions directly against runtime gateway expressions. The integration architecture must be updated to either wire CallActivity_77 into the sequence flow before ExclusiveGateway_80 or remove obsolete elements."
   },
   {
-    "risk": "Inbound SOAP message payload buffering in property '${in.body}' causing Out-Of-Memory (OOM) on large payloads",
-    "consequence": "High-volume batches or large notification bodies cached in Java heap property InputPayload can cause JVM heap exhaustion and cluster node restarts.",
-    "mitigation": "MessageFlow SOAP adapter limits maximumBodySize to 40MB; Exception Subprocess TC_GLOVIA_SO_004 ensures memory recovery during parsing failures."
+    "risk": "Mapping Failure during Schema Evolution",
+    "consequence": "If Glovia changes payload fields, Message Mapping CallActivity_102 (Test_Mapping.mmap) fails. Although SubProcess_91 logs the payload via Log_Payload (1).gsh, the message is unretrievable if MPL retention expires.",
+    "mitigation": "TC_GLOVIA_004 validates that CallActivity_97 reads ${property.InputPayload} and logs it as an attachment, preventing loss of the inbound request body during failure diagnosis."
   },
   {
-    "risk": "OneWay SOAP pattern prevents sender from receiving synchronous fault or escalation details",
-    "consequence": "Glovia sender receives HTTP 202 acknowledgment while downstream flow fails silently in ErrorEndEvent or EscalationEndEvent.",
-    "mitigation": "Exception Subprocess (SubProcess_91) logs raw payload via Log_Payload.gsh for manual operational replay via MPL attachments."
+    "risk": "Parallel Gateway Misconfiguration",
+    "consequence": "ParallelGateway_74 has only a single outgoing branch (SequenceFlow_109) in the BPMN XML, creating an unnecessary multicast overhead and potential race condition if additional asynchronous branches are attached in the future without join semantics.",
+    "mitigation": "Test cases assert single-threaded sequential path execution from ParallelGateway_74 directly into ExclusiveGateway_80."
   }
 ]

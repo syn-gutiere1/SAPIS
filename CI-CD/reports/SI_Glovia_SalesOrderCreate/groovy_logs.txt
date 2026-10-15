@@ -1,4 +1,4 @@
-[FAIL] GLOVIA_Conditioncheck_Salesorder_Create :: invalid_order_code (42 ms)
+[FAIL] GLOVIA_Conditioncheck_Salesorder_Create :: invalid_order_code (68 ms)
          -> MultipleCompilationErrorsException: startup failed:
 /home/runner/work/SAPIS/SAPIS/CI-CD/iflows/SI_Glovia_SalesOrderCreate/src/main/resources/script/GLOVIA_Conditioncheck_Salesorder_Create.groovy: 5: unable to resolve class XmlSlurper
  @ line 5, column 15.
@@ -7,7 +7,7 @@
 
 1 error
 
-[FAIL] GLOVIA_Conditioncheck_Salesorder_Create :: valid_order_yorb (12 ms)
+[FAIL] GLOVIA_Conditioncheck_Salesorder_Create :: valid_order_yorb (18 ms)
          -> MultipleCompilationErrorsException: startup failed:
 /home/runner/work/SAPIS/SAPIS/CI-CD/iflows/SI_Glovia_SalesOrderCreate/src/main/resources/script/GLOVIA_Conditioncheck_Salesorder_Create.groovy: 5: unable to resolve class XmlSlurper
  @ line 5, column 15.
@@ -16,7 +16,7 @@
 
 1 error
 
-[PASS] Interface_Generic_Headers :: payload (65 ms)
+[PASS] Interface_Generic_Headers :: payload (127 ms)
 
 Summary: 1 passed, 2 failed, 3 total
 JUnit XML: CI-CD/reports/SI_Glovia_SalesOrderCreate/junit-groovy.xml

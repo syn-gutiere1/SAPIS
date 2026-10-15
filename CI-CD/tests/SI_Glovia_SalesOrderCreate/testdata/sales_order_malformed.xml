@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns1="http://soap.sforce.com/2005/09/outbound">
-  <SOAP:Header/>
-  <SOAP:Body>
-    <ns1:notifications>
-      <ns1:Notification>
-        <unclosed_tag>
-  </SOAP:Body>
-</SOAP:Envelope>

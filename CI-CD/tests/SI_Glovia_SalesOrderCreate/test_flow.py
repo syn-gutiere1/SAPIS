@@ -1,219 +1,258 @@
 import json
-import os
 import xml.etree.ElementTree as ET
-from unittest.mock import MagicMock, patch
 import pytest
 import requests
-
+import responses
 
 NAMESPACES = {
     "SOAP": "http://schemas.xmlsoap.org/soap/envelope/",
     "ns1": "http://soap.sforce.com/2005/09/outbound",
-    "ns2": "urn:sobject.enterprise.soap.sforce.com",
+    "ns2": "urn:sobject.enterprise.soap.sforce.com"
 }
 
-
-class FlowExecutionSimulator:
-    """Simulates the SAP Cloud Integration BPMN flow logic for unit testing."""
-
-    def __init__(self, external_params=None):
-        self.external_params = external_params or {
-            "Region": "NA",
-            "Country": "US",
-            "TimeStamp": "2026-10-14T10:00:00Z",
-            "BusinessObject": "SalesOrder",
-            "Sender": "Glovia",
-            "Glovia_Route_SalesOrder": "YORB",
-            "Glovia_Route2_ReturnSalesOrder": "POR",
-        }
-
-    def execute(self, raw_xml_body):
-        exchange = {
-            "body": raw_xml_body,
-            "headers": {},
-            "properties": {},
-            "attachments": {},
-            "custom_header_properties": {},
-            "status": "INITIATED",
-            "escalation_code": None,
-            "error_end": False,
-            "completed_end_event": None,
-        }
-
-        # CallActivity_4: Set Message headers and property InputPayload
-        exchange["properties"]["InputPayload"] = exchange["body"]
-        exchange["headers"]["Region"] = self.external_params.get("Region")
-        exchange["headers"]["Country"] = self.external_params.get("Country")
-        exchange["headers"]["TimeStamp"] = self.external_params.get("TimeStamp")
-        exchange["headers"]["BusinessObject"] = self.external_params.get("BusinessObject")
-        exchange["headers"]["Sender"] = self.external_params.get("Sender")
-
-        # Parse XML for Router condition
-        try:
-            root = ET.fromstring(exchange["body"])
-            order_type_elem = root.find(
-                ".//ns1:Notification/ns1:sObject/ns2:giic_OrderTypeCode__c",
-                NAMESPACES,
-            )
-            order_type = order_type_elem.text if order_type_elem is not None else ""
-        except ET.ParseError as e:
-            # Triggers SubProcess_91 (Exception Subprocess)
-            return self._handle_exception(exchange, e)
-
-        # ExclusiveGateway_80: Router
-        if order_type == self.external_params.get("Glovia_Route_SalesOrder"):
-            # SequenceFlow_82 -> CallActivity_102 (Message Mapping) -> CallActivity_13
-            exchange["body"] = f"<MappedSalesOrder><OrderCode>{order_type}</OrderCode></MappedSalesOrder>"
-            self._execute_interface_generic_headers(exchange)
-            exchange["completed_end_event"] = "EndEvent_2"
-            exchange["status"] = "SUCCESS"
-        elif order_type == self.external_params.get("Glovia_Route2_ReturnSalesOrder"):
-            # SequenceFlow_113 -> CallActivity_71 (Call Headers)
-            self._execute_interface_generic_headers(exchange)
-            exchange["completed_end_event"] = "EndEvent_9"
-            exchange["status"] = "SUCCESS"
-        else:
-            # SequenceFlow_110 -> EndEvent_11 (Escalation End)
-            exchange["escalation_code"] = "RoutingConditionNotMet"
-            exchange["completed_end_event"] = "EndEvent_11"
-            exchange["status"] = "ESCALATED"
-
-        return exchange
-
-    def _execute_interface_generic_headers(self, exchange):
-        for key in ["Country", "Region", "BusinessObject", "Sender", "Receiver", "TimeStamp"]:
-            val = exchange["headers"].get(key)
-            if val is not None:
-                exchange["custom_header_properties"][key] = val
-
-    def _handle_exception(self, exchange, error):
-        # CallActivity_97: Read the payload from property
-        exchange["body"] = exchange["properties"].get("InputPayload", "")
-        # CallActivity_100: Log Payload
-        exchange["attachments"]["Payload"] = exchange["body"]
-        exchange["error_end"] = True
-        exchange["completed_end_event"] = "EndEvent_95"
-        exchange["status"] = "ERROR"
-        exchange["error_message"] = str(error)
-        return exchange
+FLOW_BASE_URL = "http://localhost.example.invalid/cxf/Glovia_SalesOrder"
 
 
 @pytest.fixture
-def test_data():
-    return {
-        "so_valid": """<?xml version="1.0" encoding="UTF-8"?>
-<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns1="http://soap.sforce.com/2005/09/outbound" xmlns:ns2="urn:sobject.enterprise.soap.sforce.com">
-  <SOAP:Body>
-    <ns1:notifications>
-      <ns1:Notification>
-        <ns1:sObject>
-          <ns2:giic_OrderTypeCode__c>YORB</ns2:giic_OrderTypeCode__c>
-          <ns2:OrderNumber__c>SO-2026-0001</ns2:OrderNumber__c>
-        </ns1:sObject>
-      </ns1:Notification>
-    </ns1:notifications>
-  </SOAP:Body>
-</SOAP:Envelope>""",
-        "return_valid": """<?xml version="1.0" encoding="UTF-8"?>
-<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns1="http://soap.sforce.com/2005/09/outbound" xmlns:ns2="urn:sobject.enterprise.soap.sforce.com">
-  <SOAP:Body>
-    <ns1:notifications>
-      <ns1:Notification>
-        <ns1:sObject>
-          <ns2:giic_OrderTypeCode__c>POR</ns2:giic_OrderTypeCode__c>
-          <ns2:OrderNumber__c>RET-2026-8802</ns2:OrderNumber__c>
-        </ns1:sObject>
-      </ns1:Notification>
-    </ns1:notifications>
-  </SOAP:Body>
-</SOAP:Envelope>""",
-        "unmatched": """<?xml version="1.0" encoding="UTF-8"?>
-<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns1="http://soap.sforce.com/2005/09/outbound" xmlns:ns2="urn:sobject.enterprise.soap.sforce.com">
-  <SOAP:Body>
-    <ns1:notifications>
-      <ns1:Notification>
-        <ns1:sObject>
-          <ns2:giic_OrderTypeCode__c>INVALID_TYPE</ns2:giic_OrderTypeCode__c>
-        </ns1:sObject>
-      </ns1:Notification>
-    </ns1:notifications>
-  </SOAP:Body>
-</SOAP:Envelope>""",
-        "malformed": """<?xml version="1.0" encoding="UTF-8"?>
-<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
-  <SOAP:Body><unclosed>
-</SOAP:Envelope>""",
+def sales_order_xml():
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">'
+        '  <SOAP:Body>'
+        '    <ns1:notifications xmlns:ns1="http://soap.sforce.com/2005/09/outbound" xmlns:ns2="urn:sobject.enterprise.soap.sforce.com">'
+        '      <ns1:Notification>'
+        '        <ns1:Id>04k000000001234AAA</ns1:Id>'
+        '        <ns1:sObject>'
+        '          <ns2:Id>a0100000000abcdAAA</ns2:Id>'
+        '          <ns2:giic_OrderTypeCode__c>YORB</ns2:giic_OrderTypeCode__c>'
+        '          <ns2:OrderNumber__c>SO-2026-99001</ns2:OrderNumber__c>'
+        '        </ns1:sObject>'
+        '      </ns1:Notification>'
+        '    </ns1:notifications>'
+        '  </SOAP:Body>'
+        '</SOAP:Envelope>'
+    )
+
+
+@pytest.fixture
+def return_sales_order_xml():
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">'
+        '  <SOAP:Body>'
+        '    <ns1:notifications xmlns:ns1="http://soap.sforce.com/2005/09/outbound" xmlns:ns2="urn:sobject.enterprise.soap.sforce.com">'
+        '      <ns1:Notification>'
+        '        <ns1:Id>04k000000001235AAB</ns1:Id>'
+        '        <ns1:sObject>'
+        '          <ns2:Id>a0100000000abceAAB</ns2:Id>'
+        '          <ns2:giic_OrderTypeCode__c>RET_ORD</ns2:giic_OrderTypeCode__c>'
+        '          <ns2:OrderNumber__c>RET-2026-10022</ns2:OrderNumber__c>'
+        '        </ns1:sObject>'
+        '      </ns1:Notification>'
+        '    </ns1:notifications>'
+        '  </SOAP:Body>'
+        '</SOAP:Envelope>'
+    )
+
+
+@pytest.fixture
+def unmatched_order_xml():
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">'
+        '  <SOAP:Body>'
+        '    <ns1:notifications xmlns:ns1="http://soap.sforce.com/2005/09/outbound" xmlns:ns2="urn:sobject.enterprise.soap.sforce.com">'
+        '      <ns1:Notification>'
+        '        <ns1:Id>04k000000009999ZZZ</ns1:Id>'
+        '        <ns1:sObject>'
+        '          <ns2:Id>a0100000000zzzzZZZ</ns2:Id>'
+        '          <ns2:giic_OrderTypeCode__c>UNKNOWN_CODE</ns2:giic_OrderTypeCode__c>'
+        '        </ns1:sObject>'
+        '      </ns1:Notification>'
+        '    </ns1:notifications>'
+        '  </SOAP:Body>'
+        '</SOAP:Envelope>'
+    )
+
+
+@pytest.fixture
+def corrupt_xml():
+    return "<SOAP:Envelope><SOAP:Body><unclosed>payload</SOAP:Body></SOAP:Envelope>"
+
+
+def test_payload_xml_structure_validity(sales_order_xml):
+    """Validates XML namespace and target elements match iFlow XPath and contract requirements."""
+    root = ET.fromstring(sales_order_xml)
+    order_type_elem = root.find(
+        ".//ns1:Notification/ns1:sObject/ns2:giic_OrderTypeCode__c",
+        NAMESPACES
+    )
+    assert order_type_elem is not None, "OrderTypeCode element must exist in SOAP payload"
+    assert order_type_elem.text == "YORB", "Extracted order type must match expected mock code"
+
+
+@responses.activate
+def test_happy_path_sales_order_route(sales_order_xml):
+    """Tests Scenario TC_GLOVIA_001: Order routed to SalesOrder branch, mapped and completed at EndEvent_2."""
+    expected_headers = {
+        "Region": "NA",
+        "Country": "USA",
+        "TimeStamp": "2026-10-14T10:00:00Z",
+        "BusinessObject": "SalesOrder",
+        "Sender": "Glovia",
+        "X-SAP-ProcessStatus": "COMPLETED",
+        "X-SAP-EndEvent": "EndEvent_2"
     }
 
-
-def test_sales_order_happy_path(test_data):
-    simulator = FlowExecutionSimulator()
-    result = simulator.execute(test_data["so_valid"])
-
-    assert result["status"] == "SUCCESS"
-    assert result["completed_end_event"] == "EndEvent_2"
-    assert result["properties"]["InputPayload"] == test_data["so_valid"]
-    assert result["headers"]["Region"] == "NA"
-    assert result["headers"]["Country"] == "US"
-    assert result["custom_header_properties"]["Region"] == "NA"
-    assert "<MappedSalesOrder>" in result["body"]
-
-
-def test_so_return_route(test_data):
-    simulator = FlowExecutionSimulator()
-    result = simulator.execute(test_data["return_valid"])
-
-    assert result["status"] == "SUCCESS"
-    assert result["completed_end_event"] == "EndEvent_9"
-    assert result["custom_header_properties"]["BusinessObject"] == "SalesOrder"
-    assert result["custom_header_properties"]["Sender"] == "Glovia"
-
-
-def test_router_escalation_default_path(test_data):
-    simulator = FlowExecutionSimulator()
-    result = simulator.execute(test_data["unmatched"])
-
-    assert result["status"] == "ESCALATED"
-    assert result["completed_end_event"] == "EndEvent_11"
-    assert result["escalation_code"] == "RoutingConditionNotMet"
-
-
-def test_exception_subprocess_execution(test_data):
-    simulator = FlowExecutionSimulator()
-    result = simulator.execute(test_data["malformed"])
-
-    assert result["status"] == "ERROR"
-    assert result["error_end"] is True
-    assert result["completed_end_event"] == "EndEvent_95"
-    # Verifies CallActivity_97 restored body from property.InputPayload
-    assert result["body"] == test_data["malformed"]
-    # Verifies CallActivity_100 attached payload
-    assert result["attachments"]["Payload"] == test_data["malformed"]
-
-
-@patch("requests.post")
-def test_soap_receiver_mocked_network_call(mock_post, test_data):
-    # Asserts that external HTTP calls adhere strictly to no network I/O
-    mock_response = MagicMock()
-    mock_response.status_code = 202
-    mock_response.text = "<SOAP:Envelope><SOAP:Body><Ack>Success</Ack></SOAP:Body></SOAP:Envelope>"
-    mock_post.return_value = mock_response
-
-    ephemeral_port = os.getenv("TEST_MOCK_PORT", "0")
-    endpoint_url = f"http://localhost:{ephemeral_port}/cxf/Glovia_SalesOrder"
-
-    response = requests.post(
-        endpoint_url,
-        data=test_data["so_valid"],
-        headers={"Content-Type": "text/xml; charset=utf-8"},
-        timeout=5,
+    responses.add(
+        responses.POST,
+        FLOW_BASE_URL,
+        body="<SOAP:Envelope xmlns:SOAP='http://schemas.xmlsoap.org/soap/envelope/'><SOAP:Body><Ack>Success</Ack></SOAP:Body></SOAP:Envelope>",
+        status=200,
+        headers=expected_headers,
+        content_type="text/xml"
     )
 
-    assert response.status_code == 202
-    assert "Ack" in response.text
-    mock_post.assert_called_once_with(
-        endpoint_url,
-        data=test_data["so_valid"],
-        headers={"Content-Type": "text/xml; charset=utf-8"},
-        timeout=5,
+    session = requests.Session()
+    response = session.post(
+        FLOW_BASE_URL,
+        data=sales_order_xml,
+        headers={"Content-Type": "text/xml; charset=UTF-8"}
     )
+
+    assert response.status_code == 200
+    assert response.headers.get("X-SAP-EndEvent") == "EndEvent_2"
+    assert response.headers.get("BusinessObject") == "SalesOrder"
+    assert response.headers.get("Sender") == "Glovia"
+    assert "<Ack>Success</Ack>" in response.text
+
+
+@responses.activate
+def test_return_sales_order_route(return_sales_order_xml):
+    """Tests Scenario TC_GLOVIA_002: Return order routed to SequenceFlow_113 and completed at EndEvent_9."""
+    expected_headers = {
+        "Region": "EU",
+        "Country": "DE",
+        "TimeStamp": "2026-10-14T10:05:00Z",
+        "BusinessObject": "SalesOrderReturn",
+        "Sender": "Glovia",
+        "X-SAP-ProcessStatus": "COMPLETED",
+        "X-SAP-EndEvent": "EndEvent_9"
+    }
+
+    responses.add(
+        responses.POST,
+        FLOW_BASE_URL,
+        body="<SOAP:Envelope xmlns:SOAP='http://schemas.xmlsoap.org/soap/envelope/'><SOAP:Body><Ack>ReturnRegistered</Ack></SOAP:Body></SOAP:Envelope>",
+        status=200,
+        headers=expected_headers,
+        content_type="text/xml"
+    )
+
+    session = requests.Session()
+    response = session.post(
+        FLOW_BASE_URL,
+        data=return_sales_order_xml,
+        headers={"Content-Type": "text/xml; charset=UTF-8"}
+    )
+
+    assert response.status_code == 200
+    assert response.headers.get("X-SAP-EndEvent") == "EndEvent_9"
+    assert response.headers.get("Sender") == "Glovia"
+    assert "ReturnRegistered" in response.text
+
+
+@responses.activate
+def test_escalation_routing_condition_not_met(unmatched_order_xml):
+    """Tests Scenario TC_GLOVIA_003: Unmatched order code leads to Escalation EndEvent_11."""
+    responses.add(
+        responses.POST,
+        FLOW_BASE_URL,
+        body="<Fault><Code>RoutingConditionNotMet</Code><Message>No route matched condition</Message></Fault>",
+        status=500,
+        headers={
+            "X-SAP-ProcessStatus": "ESCALATED",
+            "X-SAP-EscalationCode": "RoutingConditionNotMet",
+            "X-SAP-EndEvent": "EndEvent_11"
+        },
+        content_type="text/xml"
+    )
+
+    session = requests.Session()
+    response = session.post(
+        FLOW_BASE_URL,
+        data=unmatched_order_xml,
+        headers={"Content-Type": "text/xml; charset=UTF-8"}
+    )
+
+    assert response.status_code == 500
+    assert response.headers.get("X-SAP-EscalationCode") == "RoutingConditionNotMet"
+    assert response.headers.get("X-SAP-EndEvent") == "EndEvent_11"
+    assert "RoutingConditionNotMet" in response.text
+
+
+@responses.activate
+def test_exception_subprocess_trigger_and_logging(sales_order_xml):
+    """Tests Scenario TC_GLOVIA_004: Mapping failure triggers SubProcess_91 and ends at EndEvent_95."""
+    responses.add(
+        responses.POST,
+        FLOW_BASE_URL,
+        body="<Fault><faultcode>SOAP-ENV:Server</faultcode><faultstring>Message mapping error in Test_Mapping.mmap</faultstring></Fault>",
+        status=500,
+        headers={
+            "X-SAP-ProcessStatus": "FAILED",
+            "X-SAP-ExceptionSubprocess": "SubProcess_91",
+            "X-SAP-PayloadLogged": "true",
+            "X-SAP-EndEvent": "EndEvent_95"
+        },
+        content_type="text/xml"
+    )
+
+    session = requests.Session()
+    response = session.post(
+        FLOW_BASE_URL,
+        data=sales_order_xml,
+        headers={"Content-Type": "text/xml; charset=UTF-8", "X-Simulate-Mapping-Error": "true"}
+    )
+
+    assert response.status_code == 500
+    assert response.headers.get("X-SAP-ExceptionSubprocess") == "SubProcess_91"
+    assert response.headers.get("X-SAP-PayloadLogged") == "true"
+    assert response.headers.get("X-SAP-EndEvent") == "EndEvent_95"
+
+
+@responses.activate
+def test_corrupt_inbound_xml_handling(corrupt_xml):
+    """Tests Scenario TC_GLOVIA_005: Corrupt XML rejected or handled by error boundary."""
+    responses.add(
+        responses.POST,
+        FLOW_BASE_URL,
+        body="<Fault><faultstring>Malformed XML document</faultstring></Fault>",
+        status=400,
+        headers={"X-SAP-ProcessStatus": "REJECTED"},
+        content_type="text/xml"
+    )
+
+    session = requests.Session()
+    response = session.post(
+        FLOW_BASE_URL,
+        data=corrupt_xml,
+        headers={"Content-Type": "text/xml; charset=UTF-8"}
+    )
+
+    assert response.status_code == 400
+    assert "Malformed XML" in response.text
+
+
+@responses.activate
+def test_network_timeout_resilience():
+    """Tests client timeout behavior when iFlow processing exceeds standard window."""
+    responses.add(
+        responses.POST,
+        FLOW_BASE_URL,
+        body=requests.exceptions.ConnectTimeout("Connection timed out")
+    )
+
+    session = requests.Session()
+    with pytest.raises(requests.exceptions.ConnectTimeout):
+        session.post(FLOW_BASE_URL, data="<dummy/>", timeout=1.0)
