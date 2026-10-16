@@ -641,8 +641,13 @@ jobs:
       # a failing suite is exactly the evidence worth preserving - and with
       # `continue-on-error` so it cannot mask the verdict applied below.
       #
-      # The push uses the default GITHUB_TOKEN. Commits made with that token do NOT
-      # trigger new workflow runs, which is what prevents a bot -> bot loop.
+      # The push uses the default GITHUB_TOKEN, and commits made with it do NOT trigger
+      # new workflow runs: that is what prevents a bot -> bot loop, not the branch.
+      #
+      # A green run commits straight to `main`. The branch exists so a FAILURE has a PR a
+      # person will see; generated evidence that passed has nothing to review, and keeping
+      # a code snapshot on a side branch is what let `main` carry evidence produced from
+      # stale code.
       - name: Commit the generated artifacts
         if: always()
         continue-on-error: true
@@ -659,17 +664,52 @@ jobs:
             exit 0
           fi
 
-          git commit -m "chore(ai): test plan for ${{ matrix.iflow }} at ${{ github.sha }}"
+          # Decided from the marker files the suites write, for the same reason as
+          # everywhere else in this workflow: `steps.<id>.conclusion` did not report the
+          # suite failures reliably.
+          if [ -f ".ci/pytest-failed" ] || [ -f ".ci/groovy-failed" ]; then
+            TARGET_BRANCH="$GITHUB_REF_NAME"
+            echo "A suite failed: committing to $TARGET_BRANCH so the PR shows it."
+          else
+            TARGET_BRANCH="main"
+            echo "Everything passed: committing to main."
+          fi
 
-          # Several matrix jobs push to the same branch at the same time. Without
-          # the rebase a push loses the race and fails with a non-fast-forward.
+          git commit -m "chore(ai): test plan for ${{ matrix.iflow }} at ${{ github.sha }}"
+          # The retry replays this commit's tree onto the target, so the SHA is needed
+          # after HEAD moves off it.
+          COMMIT_SHA="$(git rev-parse HEAD)"
+
+          # Several matrix jobs push to the same target at the same time. Without
+          # retrying, a push loses the race and fails with a non-fast-forward.
           for attempt in 1 2 3 4 5; do
-            if git push; then
-              echo "Push succeeded on attempt $attempt."
+            if git push origin "HEAD:${TARGET_BRANCH}"; then
+              echo "Push to ${TARGET_BRANCH} succeeded on attempt $attempt."
               exit 0
             fi
-            echo "Push rejected; rebasing and retrying ($attempt/5)..."
-            git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
+            echo "Push rejected; replaying onto ${TARGET_BRANCH} and retrying ($attempt/5)..."
+
+            # Replay the generated files onto the freshly fetched target instead of
+            # rebasing or cherry-picking. Those merge HISTORIES, and HEAD here is
+            # `sap-is`, which carries a different branch state: `git pull --rebase
+            # origin main` died on a conflict, and a cherry-pick hit an add/add conflict
+            # because both sides added the same files. In both cases the abort left HEAD
+            # on `origin/main`, so the next push was a no-op and the step reported success
+            # while main never moved.
+            #
+            # Copying the tree is what the intent actually is: these directories are
+            # generated output, so the target's content is replaced wholesale. No merge
+            # means nothing to conflict on.
+            git fetch origin "${TARGET_BRANCH}"
+            git checkout -q -B "publish-${TARGET_BRANCH}" "origin/${TARGET_BRANCH}"
+            git checkout "$COMMIT_SHA" -- "$TESTS_DIR" "$PLANS_DIR" "$REPORTS_DIR"
+            git add -A "$TESTS_DIR" "$PLANS_DIR" "$REPORTS_DIR"
+            if git diff --cached --quiet; then
+              # The target already carries exactly this content; nothing to send.
+              echo "The target already matches this run's artifacts; nothing to push."
+              exit 0
+            fi
+            git commit -m "chore(ai): test plan for ${{ matrix.iflow }} at ${{ github.sha }}"
             sleep $((attempt * 3))
           done
 
