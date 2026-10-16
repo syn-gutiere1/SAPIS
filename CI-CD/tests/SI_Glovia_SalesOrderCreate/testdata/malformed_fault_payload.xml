@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SOAP:Envelope xmlns:SOAP="http://schemas.xmlsoap.org/soap/envelope/">
+  <SOAP:Body>
+    <SOAP:Fault>
+      <faultcode>SOAP:Client</faultcode>
+      <faultstring>XML parsing error: unclosed token at line 14</faultstring>
+      <faultactor>http://example.invalid/cxf</faultactor>
+      <detail>
+        <source>CXF-InboundParser</source>
+      </detail>
+    </SOAP:Fault>
+  </SOAP:Body>
+</SOAP:Envelope>

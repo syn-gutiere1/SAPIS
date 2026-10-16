@@ -1,22 +1,22 @@
 [
   {
-    "risk": "Unattached Process Activities (CallActivity_77 and CallActivity_86)",
-    "consequence": "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) and CallActivity_86 (Content Modifier for OrganizationId) are defined in the BPMN model but have no connecting incoming/outgoing sequence flows. The validation logic for order types is never executed during runtime, potentially leading to incorrect router evaluation.",
-    "mitigation": "Wire CallActivity_77 and CallActivity_86 sequentially between CallActivity_4 and ExclusiveGateway_80. Write unit tests validating that 'OrderCodeValid' and 'OrganizationId' headers are populated."
+    "risk": "Unmatched routing condition falls through to default escalation",
+    "consequence": "Inbound Sales Orders or Returns with unrecognized order type codes trigger EndEvent_11 EscalationEndEvent, causing order ingestion failure and potential backlog in Glovia",
+    "mitigation": "TC_ROUTER_DEFAULT_ESCALATION_03 verifies EscalationEndEvent behavior and ensures errors are explicitly raised rather than silently dropped, complemented by monitoring alerts on RoutingConditionNotMet"
   },
   {
-    "risk": "Message Body Size & Memory Consumption",
-    "consequence": "In CallActivity_4, the property 'InputPayload' is created using expression '${in.body}'. For high-volume or oversized payloads, caching large string payloads in Camel exchange properties causes JVM heap exhaustion.",
-    "mitigation": "Enforce strict XML maximum body size thresholds (already configured to 40MB in SOAP adapter) and test boundary size limit behaviors."
+    "risk": "Message mapping failure due to schema mismatch or missing mandatory elements",
+    "consequence": "Test_Mapping (CallActivity_102) fails during runtime transformation, aborting the Sales Order path",
+    "mitigation": "TC_EXCEPTION_SUBPROCESS_RECOVERY_04 validates that SubProcess_91 catches the mapping exception, retrieves InputPayload from property, and preserves it as an attachment before terminating with an Error End Event"
   },
   {
-    "risk": "Escalation End Event Handling",
-    "consequence": "EndEvent_11 raises an escalation event ('RoutingConditionNotMet'). If external sender Glovia expects standard SOAP acknowledgements, an unhandled escalation fault can cause retry storms from the sender system.",
-    "mitigation": "Implement explicit test assertions for SOAP 1.1 Fault compliance and ensure receiver error contracts accept the escalation fault format."
+    "risk": "Floating unlinked components (CallActivity_77 and CallActivity_86)",
+    "consequence": "GLOVIA_Conditioncheck_Salesorder_Create.groovy and Content Modifier 86 are orphaned in the BPMN model and not executed in the active sequence flow, leaving OrderCodeValid and OrganizationId unpopulated",
+    "mitigation": "TestSuite tests the active execution path explicitly, verifying headers set by CallActivity_4 and Interface_Generic_Headers.groovy while highlighting dead flow artifacts in coverage analysis"
   },
   {
-    "risk": "Externalized Configuration Parameters Missing",
-    "consequence": "The router conditions '{{Glovia_Route_SalesOrder}}' and '{{Glovia_Route2_ReturnSalesOrder}}' rely on tenant parameters. If unconfigured or misconfigured, all traffic diverts to default Escalation End.",
-    "mitigation": "Create automated smoke tests validating parameter injection across deployment pipelines before activating endpoints."
+    "risk": "One-Way CXF SOAP listener connection timeout or sender retry storms",
+    "consequence": "Network degradation or slow downstream REST receivers can hold sender connections or trigger duplicate SOAP deliveries from Glovia",
+    "mitigation": "TC_SOAP_SALES_ORDER_01 and test_adapter_timeout_handling test timeout resilience, verify asynchronous 202 acknowledgment, and ensure property InputPayload retains source payload for idempotency checks"
   }
 ]
