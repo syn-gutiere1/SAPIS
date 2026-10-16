@@ -1,36 +1,33 @@
 {
   "target_coverage_percent": 100,
   "coverage_by_component": {
-    "StartEvent_2 (MessageStartEvent)": "100%",
+    "StartEvent_2": "100%",
     "CallActivity_4 (Set Message headers)": "100%",
-    "ParallelGateway_74 (Multicast)": "100%",
+    "ParallelGateway_74": "100%",
     "ExclusiveGateway_80 (Router)": "100%",
-    "SequenceFlow_82 (SalesOrder branch)": "100%",
     "CallActivity_102 (Message Mapping 1)": "100%",
-    "CallActivity_13 (Generic Headers SO)": "100%",
-    "EndEvent_2 (End SO)": "100%",
-    "SequenceFlow_113 (SO Return branch)": "100%",
-    "CallActivity_71 (Generic Headers SO Return)": "100%",
-    "EndEvent_9 (End SO Return)": "100%",
-    "SequenceFlow_110 (Default Escalation Route)": "100%",
+    "CallActivity_13 (Interface_Generic_Headers)": "100%",
+    "CallActivity_71 (Interface_Generic_Headers)": "100%",
+    "EndEvent_2 (Sales Order End)": "100%",
+    "EndEvent_9 (Return Order End)": "100%",
     "EndEvent_11 (Escalation End)": "100%",
     "SubProcess_91 (Exception Subprocess)": "100%",
-    "CallActivity_97 (Read Payload from Property)": "100%",
+    "CallActivity_97 (Payload Restore)": "100%",
     "CallActivity_100 (Log Payload Script)": "100%",
     "EndEvent_95 (Error End Event)": "100%",
-    "CallActivity_77 (Orphaned Groovy Script 2)": "0%",
+    "CallActivity_77 (Orphaned Script 2)": "0%",
     "CallActivity_86 (Orphaned Content Modifier)": "0%",
     "CallActivity_77 (Groovy Script 2)": "0%",
     "CallActivity_86 (Content Modifier)": "0%"
   },
   "uncovered_paths": [
-    "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) has no incoming or outgoing SequenceFlow connections in the BPMN process definition.",
-    "CallActivity_86 (Content Modifier extracting OrganizationId) has no incoming or outgoing SequenceFlow connections in the BPMN process definition.",
+    "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) has no inbound or outbound BPMN sequence flows in Process_1.",
+    "CallActivity_86 (Content Modifier for OrganizationId extraction) is completely detached from the execution graph.",
     "Unreachable in the process: CallActivity_77 (Groovy Script 2); CallActivity_86 (Content Modifier). These elements have no sequence flow connecting them to the flow, so no test can exercise them."
   ],
   "coverage_recommendations": [
-    "Connect CallActivity_86 between CallActivity_4 and ParallelGateway_74 so that OrganizationId is extracted via XPath into headers for routing rules.",
-    "Connect CallActivity_77 between CallActivity_86 and ExclusiveGateway_80 to evaluate OrderCodeValid before the Router, allowing router conditions to evaluate ${header.OrderCodeValid} = 'true' instead of unlinked script logic.",
-    "Remove orphaned activities from the BPMN definitions if their logic was superseded by CallActivity_4 and externalized routing expressions {{Glovia_Route_SalesOrder}}."
+    "Connect CallActivity_86 and CallActivity_77 sequentially between CallActivity_4 and ParallelGateway_74 in Process_1.",
+    "Connect EndEvent_2 to Participant_2 and EndEvent_9 to Participant_112 using Request-Reply or Message Flow adapters to achieve end-to-end connectivity.",
+    "Once BPMN sequence flows are restored for CallActivity_77 and 86, add test assertions verifying the extracted OrganizationId header and OrderCodeValid header to reach genuine 100% executable flow coverage."
   ]
 }

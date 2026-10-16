@@ -1,22 +1,22 @@
 [
   {
-    "risk": "Unmatched routing condition falls through to default escalation",
-    "consequence": "Inbound Sales Orders or Returns with unrecognized order type codes trigger EndEvent_11 EscalationEndEvent, causing order ingestion failure and potential backlog in Glovia",
-    "mitigation": "TC_ROUTER_DEFAULT_ESCALATION_03 verifies EscalationEndEvent behavior and ensures errors are explicitly raised rather than silently dropped, complemented by monitoring alerts on RoutingConditionNotMet"
+    "risk": "Dead / Unconnected Process Steps in iFlow BPMN Definition",
+    "consequence": "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) and CallActivity_86 (Content Modifier extracting OrganizationId) exist in the flow XML with no incoming or outgoing sequence flows. Any expected validation or header extraction is skipped, resulting in invalid orders reaching mapping or downstream receivers.",
+    "mitigation": "Unit test suite verifies order code checks directly and asserts on headers. The iFlow must be updated to wire CallActivity_77 and CallActivity_86 immediately after CallActivity_4 before the parallel/exclusive gateways."
   },
   {
-    "risk": "Message mapping failure due to schema mismatch or missing mandatory elements",
-    "consequence": "Test_Mapping (CallActivity_102) fails during runtime transformation, aborting the Sales Order path",
-    "mitigation": "TC_EXCEPTION_SUBPROCESS_RECOVERY_04 validates that SubProcess_91 catches the mapping exception, retrieves InputPayload from property, and preserves it as an attachment before terminating with an Error End Event"
+    "risk": "Silent Routing Failures via Externalized Route Properties",
+    "consequence": "Routing rules {{Glovia_Route_SalesOrder}} and {{Glovia_Route2_ReturnSalesOrder}} depend on external configuration parameters. If misconfigured or referencing non-existent properties, messages fall through to SequenceFlow_110 (Default Escalation) or terminate unexpectedly.",
+    "mitigation": "SCENARIO-03 explicitly validates the EscalationEndEvent path to ensure that when conditions are unfulfilled, an escalation with ErrorCode RoutingConditionNotMet is raised rather than quietly discarding messages."
   },
   {
-    "risk": "Floating unlinked components (CallActivity_77 and CallActivity_86)",
-    "consequence": "GLOVIA_Conditioncheck_Salesorder_Create.groovy and Content Modifier 86 are orphaned in the BPMN model and not executed in the active sequence flow, leaving OrderCodeValid and OrganizationId unpopulated",
-    "mitigation": "TestSuite tests the active execution path explicitly, verifying headers set by CallActivity_4 and Interface_Generic_Headers.groovy while highlighting dead flow artifacts in coverage analysis"
+    "risk": "Missing Receiver Adapter Connections",
+    "consequence": "Participants Participant_2 (CreateOrder Details REST) and Participant_112 (SOReturns Details REST) are defined as EndpointReceivers in Collaboration_1 but have no connecting Message Flows from EndEvent_2 or EndEvent_9. Messages terminate at the end event without actually dispatching to destination systems.",
+    "mitigation": "Add request validation assertions confirming target delivery headers and flag missing target message flows in integration pipeline checks."
   },
   {
-    "risk": "One-Way CXF SOAP listener connection timeout or sender retry storms",
-    "consequence": "Network degradation or slow downstream REST receivers can hold sender connections or trigger duplicate SOAP deliveries from Glovia",
-    "mitigation": "TC_SOAP_SALES_ORDER_01 and test_adapter_timeout_handling test timeout resilience, verify asynchronous 202 acknowledgment, and ensure property InputPayload retains source payload for idempotency checks"
+    "risk": "Payload Loss during Exception Logging",
+    "consequence": "In SubProcess_91, CallActivity_97 overwrites the message body with ${property.InputPayload}. If an error occurs in CallActivity_4 before InputPayload is initialized, CallActivity_97 sets the body to null/empty string, preventing Log_Payload.gsh from recording diagnostic data.",
+    "mitigation": "Test case test_exception_subprocess_triggered exercises the exception path, verifying that InputPayload retention is verified even under boundary error states."
   }
 ]

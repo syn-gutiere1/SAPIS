@@ -4,11 +4,12 @@
   <soapenv:Body>
     <ns1:notifications>
       <ns1:Notification>
-        <ns1:Id>04k5g000000XYZ1AAO</ns1:Id>
+        <ns1:Id>04k000000000002BBB</ns1:Id>
         <ns1:sObject>
-          <ns2:Id>a085g000001ABC2AAO</ns2:Id>
-          <ns2:giic_OrderTypeCode__c>YORB</ns2:giic_OrderTypeCode__c>
-          <ns2:giic_OrderNumber__c>ORD-90210</ns2:giic_OrderNumber__c>
+          <ns2:Id>a01000000000002BBB</ns2:Id>
+          <ns2:giic_OrderTypeCode__c>POR</ns2:giic_OrderTypeCode__c>
+          <ns2:IsReturn__c>true</ns2:IsReturn__c>
+          <ns2:CustomerNumber__c>CUST-99001</ns2:CustomerNumber__c>
         </ns1:sObject>
       </ns1:Notification>
     </ns1:notifications>

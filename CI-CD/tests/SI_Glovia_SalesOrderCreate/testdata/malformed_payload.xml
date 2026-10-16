@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
   <soapenv:Body>
-    <corrupt_xml>unclosed_tag
+    <invalid_tag>Broken Payload without Closing Tag
   </soapenv:Body>
 </soapenv:Envelope>

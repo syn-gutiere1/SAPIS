@@ -1,76 +1,61 @@
 # Suggested fixes — SI_Glovia_SalesOrderCreate
 
-Generated for commit `d85e79813548` from the failure log.
+Generated for commit `4dd7cc436a25` from the failure log.
 
 > Written by a model from the iFlow XML and its scripts. It is a hypothesis to speed up the investigation, not a verdict: check it against the artifact before changing anything.
 
 ---
 
-### Failure Log & Test Suite Analysis
+### Analysis of Test Results and Layer Identification
 
-Both automated test suites passed completely:
-* **Pytest Simulation Suite:** 6 passed, 0 failed. All routing branches, header enrichments, escalation paths, and exception subprocess flows simulated successfully.
-* **Groovy Test Harness:** 4 passed, 0 failed. All scripts (`GLOVIA_Conditioncheck_Salesorder_Create.groovy`, `Interface_Generic_Headers.groovy`, and `Log_Payload.gsh`) compiled and passed assertions within the Groovy harness.
+Based on the execution logs provided:
+- **Groovy Harness (`groovy_logs.txt`)**: 4 passed, 0 failed. All unit test fixtures for `GLOVIA_Conditioncheck_Salesorder_Create.groovy`, `Interface_Generic_Headers.groovy`, and `Log_Payload.gsh` passed successfully.
+- **Python/Pytest Suite (`pytest_logs.txt`)**: 4 passed, 0 failed. All simulated routing, happy paths, escalation paths, and exception subprocesses passed.
 
-There are **no runtime failures in the test harness or scripts**. However, the static flow analysis and coverage report identify an **iFlow BPMN structural defect**: dead/orphaned flow elements (`CallActivity_77` and `CallActivity_86`) existing inside `<bpmn2:process id="Process_1">` without incoming or outgoing sequence flows.
+**Layer Identification**:
+There are no runtime test execution failures in either the Groovy script layer or the pytest simulation layer. The build/pipeline failure is raised at the **CI Quality Gate / Coverage Verification Layer** caused directly by an **iFlow BPMN structural defect**: elements `CallActivity_77` and `CallActivity_86` exist in `Process_1` with zero incoming or outgoing sequence flows. Because these elements are disconnected, they can never be executed during simulation or tenant runtime, preventing the flow from reaching 100% test coverage.
 
 ---
 
-### Layer Attribution
+### Artifact Diagnostics & Corrections
 
-* **Layer: iFlow Model (BPMN XML Defect)**
-  * **Element:** `CallActivity_77` (`Groovy Script 2`, calling `GLOVIA_Conditioncheck_Salesorder_Create.groovy`) and `CallActivity_86` (`Content Modifier`).
-  * **Issue:** Both elements are floating BPMN objects disconnected from the sequence flow graph. Consequently, order code validation (`OrderCodeValid`) and organization extraction (`OrganizationId`) are never executed during runtime message processing.
+1. **iFlow Layer (`CallActivity_77` & `CallActivity_86`)**:
+   - `CallActivity_86` extracts `OrganizationId` into headers/properties, and `CallActivity_77` executes `GLOVIA_Conditioncheck_Salesorder_Create.groovy` to validate `giic_OrderTypeCode__c` against allowed order codes (`['YORB', 'YICB', 'POR', 'MNZ', 'PLM']`).
+   - In `Process_1`, they are completely detached from the graph.
+   - **Fix**: Wire them in sequence after `CallActivity_4` (Set Message headers) and before `ParallelGateway_74` (or the routing decision gateway `ExclusiveGateway_80`). Replace the outgoing sequence flow from `CallActivity_4` to point to `CallActivity_86`, add a sequence flow from `CallActivity_86` to `CallActivity_77`, and route from `CallActivity_77` to `ParallelGateway_74`.
+
+2. **Groovy Script Layer**:
+   - `GLOVIA_Conditioncheck_Salesorder_Create.groovy`, `Interface_Generic_Headers.groovy`, and `Log_Payload.gsh` compile and pass all tests. No edits are required in the Groovy scripts.
 
 ---
 
 ## Fix Risks
 
-1. **Unmatched routing condition falls through to default escalation**
-   * **Status & Mitigation:** **Already covered by current design.**
-   * The router `ExclusiveGateway_80` routes unmatched payloads through `SequenceFlow_110` directly to `EndEvent_11` (`EscalationEndEvent` with error code `RoutingConditionNotMet`). This ensures invalid or unrecognized payloads do not get silently acknowledged as successful.
-   * **Operational Mitigation:** Ensure SAP Cloud ALM or SAP BTP Alert Notification Service is configured with an alert rule on the integration flow `SI_Glovia_SalesOrderCreate` matching escalation code `RoutingConditionNotMet` to notify integration operations before Glovia outbound message queues back up.
+1. **Dead / Unconnected Process Steps in iFlow BPMN Definition**
+   - **Fix in iFlow**: In `Process_1`, rewire the sequence flows around `CallActivity_4`. Remove direct sequence flow `SequenceFlow_73` (from `CallActivity_4` to `ParallelGateway_74`). Add a sequence flow from `CallActivity_4` to `CallActivity_86`, a sequence flow from `CallActivity_86` to `CallActivity_77`, and a sequence flow from `CallActivity_77` to `ParallelGateway_74`. If order validation is required before branching, this ensures `OrganizationId` is extracted and `OrderCodeValid` is set prior to downstream processing.
 
-2. **Message mapping failure due to schema mismatch or missing mandatory elements**
-   * **Status & Mitigation:** **Already covered by current design.**
-   * Mapping errors during `CallActivity_102` (`Message Mapping 1`) trigger `SubProcess_91` (`ErrorEventSubProcessTemplate`). Inside the subprocess:
-     * `CallActivity_97` restores the initial incoming body via `${property.InputPayload}`.
-     * `CallActivity_100` executes `Log_Payload.gsh`, attaching the restored payload to the MPL (`messageLog.addAttachmentAsString("Payload", ...)`).
-     * `EndEvent_95` raises an `EndErrorEvent`, ensuring proper failure logging and sender notification.
-   * Ensure that the initial Content Modifier `CallActivity_4` persists the incoming payload into exchange property `InputPayload` using property type `Expression` and value `${in.body}`.
+2. **Silent Routing Failures via Externalized Route Properties**
+   - **Status / Mitigation**: Already covered by the current design. The flow configuration routes unhandled messages to default branch `SequenceFlow_110`, terminating at `EndEvent_11` (`EscalationEndEvent` with error code `RoutingConditionNotMet`). This prevents silent dropping of messages when externalized properties `{{Glovia_Route_SalesOrder}}` or `{{Glovia_Route2_ReturnSalesOrder}}` evaluate to false.
 
-3. **Floating unlinked components (CallActivity_77 and CallActivity_86)**
-   * **Fix in iFlow XML:**
-     * **If superseded:** If order type validation and routing have been consolidated into `CallActivity_4` and router expressions, **delete** `CallActivity_77` and `CallActivity_86` from the BPMN XML, and remove the unreferenced script file `GLOVIA_Conditioncheck_Salesorder_Create.groovy` from the artifact bundle.
-     * **If required by business logic:** Wire them between `CallActivity_4` and `ParallelGateway_74`:
-       1. Re-route the outgoing sequence flow of `CallActivity_4` to `CallActivity_86`.
-       2. Add a `SequenceFlow` from `CallActivity_86` to `CallActivity_77`.
-       3. Add a `SequenceFlow` from `CallActivity_77` to `ParallelGateway_74` (or `ExclusiveGateway_80`).
-       4. Update `ExclusiveGateway_80` branch conditions to evaluate `${header.OrderCodeValid} = 'true'`.
+3. **Missing Receiver Adapter Connections**
+   - **Fix in iFlow**: The receiver participants `Participant_2` (`Glovia_Get_CreateOrder_Details_REST_Receiver`) and `Participant_112` (`GLOVIA_SOReturns_Details_REST_Receiver`) lack outbound message flows. 
+   - **Mitigation / Fix**: In `Collaboration_1`, replace the passive end events `EndEvent_2` and `EndEvent_9` with external Request-Reply / Send service call activities, or draw outbound `bpmn2:messageFlow` connections from `EndEvent_2` to `Participant_2` and from `EndEvent_9` to `Participant_112` specifying the REST/HTTP adapter configuration.
 
-4. **One-Way CXF SOAP listener connection timeout or sender retry storms**
-   * **Fix / Mitigation:**
-     * `MessageFlow_114` is configured with `OneWay` exchange pattern and `cxfRobust`. In synchronous multi-receiver executions, slow responses from `Participant_2` or `Participant_112` can block CXF worker threads and prompt Glovia to time out and retry.
-     * **iFlow Architectural Mitigation:** Decouple inbound ingestion from downstream delivery: insert a JMS Queue (or Data Store via an asynchronous subprocess) right after initial header enrichment in `Process_1`. The SOAP listener returns HTTP 202 to Glovia immediately upon queuing.
-     * **Idempotency Mitigation:** Add an Idempotent Process Call or Data Store lookup step based on the unique sales order identifier (e.g., extracted from `/Envelope/Body/notifications/Notification/sObject/Id`) to detect and discard duplicate deliveries during network retries.
+4. **Payload Loss during Exception Logging**
+   - **Fix in iFlow**: In `Process_1`, ensure `CallActivity_4` (or an initial Content Modifier immediately following `StartEvent_2`) initializes property `InputPayload` with `${in.body}` as its very first action.
+   - **Mitigation in SubProcess_91**: In `CallActivity_97`, guard the expression `${property.InputPayload}` or modify `Log_Payload.gsh` to log `${in.body}` directly if property `InputPayload` is null or empty, preventing payload blanking when errors occur early in the lifecycle.
 
 ---
 
 ## Fix Coverage
 
-Every item in the coverage report currently below 100% is addressed below:
+1. **CallActivity_77 (Groovy Script 2 / GLOVIA_Conditioncheck_Salesorder_Create.groovy) [0 % Coverage]**:
+   - **Path**: Unconnected node in `Process_1`.
+   - **How to Cover**: Wire it into the execution flow. Connect `CallActivity_86` -> `CallActivity_77` -> `ParallelGateway_74`. Once connected, add a test case in `CI-CD/tests/SI_Glovia_SalesOrderCreate/test_flow.py` passing a valid XML payload with `<giic_OrderTypeCode__c>YORB</giic_OrderTypeCode__c>` and assert that header `OrderCodeValid == "true"`, and a test case with an invalid code (e.g. `INVALID`) asserting `OrderCodeValid == "false"`.
 
-1. **`CallActivity_77` (Groovy Script 2) — 0% Coverage**
-   * **Root Cause:** Disconnected BPMN element with no incoming or outgoing `SequenceFlow`. It cannot be traversed or exercised by integration runtime or simulation tests.
-   * **Fix:** 
-     * **Option A (Removal - Recommended if superseded):** Remove `<bpmn2:callActivity id="CallActivity_77" .../>` and its associated BPMNDI diagram shape `<bpmndi:BPMNShape bpmnElement="CallActivity_77">` from the iFlow XML. This eliminates dead code and achieves 100% coverage on active components.
-     * **Option B (Wired Integration):** If order code validation is mandatory, connect incoming `SequenceFlow` from `CallActivity_86` to `CallActivity_77` and outgoing `SequenceFlow` to `ExclusiveGateway_80`. Then add a test case in `CI-CD/tests/SI_Glovia_SalesOrderCreate/test_flow.py` exercising an invalid order code that routes to `EndEvent_11` via `OrderCodeValid = 'false'`.
+2. **CallActivity_86 (Content Modifier / OrganizationId extraction) [0 % Coverage]**:
+   - **Path**: Unconnected node in `Process_1`.
+   - **How to Cover**: Wire it into the execution flow sequentially between `CallActivity_4` and `CallActivity_77`. In `CI-CD/tests/SI_Glovia_SalesOrderCreate/test_flow.py`, assert that header/property `OrganizationId` is successfully extracted from the incoming request payload across the test scenarios.
 
-2. **`CallActivity_86` (Content Modifier) — 0% Coverage**
-   * **Root Cause:** Disconnected BPMN element with no incoming or outgoing `SequenceFlow`.
-   * **Fix:**
-     * **Option A (Removal - Recommended if superseded):** Remove `<bpmn2:callActivity id="CallActivity_86" .../>` and its corresponding `<bpmndi:BPMNShape bpmnElement="CallActivity_86">` from the XML.
-     * **Option B (Wired Integration):** Connect an incoming `SequenceFlow` from `CallActivity_4` to `CallActivity_86` and an outgoing `SequenceFlow` to `CallActivity_77`. Add assertions in `test_sales_order_happy_path` verifying that the header `OrganizationId` is correctly populated via XPath from the inbound payload.
-
-3. **Uncovered Path: Disconnected Sequence Flows around `CallActivity_77` and `CallActivity_86`**
-   * Once Option A (deletion of unused nodes) is executed, the process definition is pruned of unreachable nodes, bringing total iFlow component and path coverage to **100%**.
+3. **Unreachable in Process (`CallActivity_77` and `CallActivity_86`)**:
+   - If business requirements dictate that order code validation and organization ID extraction are mandatory for this integration, wire both elements into the flow as described above. If they are obsolete or legacy remnants from a previous version, remove both `CallActivity_77` and `CallActivity_86` definitions completely from the iFlow XML artifact to bring reachable component coverage to 100%.
