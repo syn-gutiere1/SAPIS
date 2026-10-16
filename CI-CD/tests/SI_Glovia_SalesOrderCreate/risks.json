@@ -1,22 +1,22 @@
 [
   {
-    "risk": "Unmatched routing condition falls through to default escalation",
-    "consequence": "Inbound Sales Orders or Returns with unrecognized order type codes trigger EndEvent_11 EscalationEndEvent, causing order ingestion failure and potential backlog in Glovia",
-    "mitigation": "TC_ROUTER_DEFAULT_ESCALATION_03 verifies EscalationEndEvent behavior and ensures errors are explicitly raised rather than silently dropped, complemented by monitoring alerts on RoutingConditionNotMet"
+    "risk": "Unattached Process Activities (CallActivity_77 and CallActivity_86)",
+    "consequence": "The Groovy script `GLOVIA_Conditioncheck_Salesorder_Create.groovy` and header modifier `CallActivity_86` are present in BPMN definitions but disconnected from incoming/outgoing sequence flows. Any order code validation logic inside CallActivity_77 is silently bypassed at runtime.",
+    "mitigation": "Unit tests TC_GLOVIA_001 and TC_GLOVIA_003 verify routing directly against the configured gateway conditions. Reconnecting CallActivity_77 before ExclusiveGateway_80 must be followed by tests validating OrderCodeValid header setting."
   },
   {
-    "risk": "Message mapping failure due to schema mismatch or missing mandatory elements",
-    "consequence": "Test_Mapping (CallActivity_102) fails during runtime transformation, aborting the Sales Order path",
-    "mitigation": "TC_EXCEPTION_SUBPROCESS_RECOVERY_04 validates that SubProcess_91 catches the mapping exception, retrieves InputPayload from property, and preserves it as an attachment before terminating with an Error End Event"
+    "risk": "Default Routing Escalation in One-Way CXF Adapter",
+    "consequence": "When an incoming message does not match either SalesOrder or ReturnSalesOrder condition, EndEvent_11 raises an escalation error `RoutingConditionNotMet`. For asynchronous/one-way SOAP CXF endpoints, uncaught escalations may leave messages stuck in MPL without automated retry.",
+    "mitigation": "TC_GLOVIA_003 validates that the escalation is explicitly raised with `RoutingConditionNotMet` and generates the expected SOAP Fault payload to alert monitoring systems."
   },
   {
-    "risk": "Floating unlinked components (CallActivity_77 and CallActivity_86)",
-    "consequence": "GLOVIA_Conditioncheck_Salesorder_Create.groovy and Content Modifier 86 are orphaned in the BPMN model and not executed in the active sequence flow, leaving OrderCodeValid and OrganizationId unpopulated",
-    "mitigation": "TestSuite tests the active execution path explicitly, verifying headers set by CallActivity_4 and Interface_Generic_Headers.groovy while highlighting dead flow artifacts in coverage analysis"
+    "risk": "Large Message Payload Exceeding In-Memory Property Storage",
+    "consequence": "CallActivity_4 reads the entire inbound message body into property `InputPayload` using `${in.body}`. For payloads approaching the 40MB maximumBodySize limit, this duplicates memory usage on the JVM worker node and risks OutOfMemoryError.",
+    "mitigation": "TC_GLOVIA_005 verifies boundary handling and recommends streaming or selective persistence rather than in-memory property duplication."
   },
   {
-    "risk": "One-Way CXF SOAP listener connection timeout or sender retry storms",
-    "consequence": "Network degradation or slow downstream REST receivers can hold sender connections or trigger duplicate SOAP deliveries from Glovia",
-    "mitigation": "TC_SOAP_SALES_ORDER_01 and test_adapter_timeout_handling test timeout resilience, verify asynchronous 202 acknowledgment, and ensure property InputPayload retains source payload for idempotency checks"
+    "risk": "Unqualified SOAP Fault Element Lookup Failure",
+    "consequence": "External consumer systems inspecting SOAP 1.1 Fault responses may fail parsing if namespaces are incorrectly applied to child elements (`faultcode`, `faultstring`).",
+    "mitigation": "All unit assertions in `test_flow.py` strictly adhere to SOAP 1.1 specification standards where `Fault` has envelope qualification while `faultstring` and `detail` are unqualified."
   }
 ]

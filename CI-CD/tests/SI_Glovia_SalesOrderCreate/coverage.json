@@ -1,36 +1,34 @@
 {
   "target_coverage_percent": 100,
   "coverage_by_component": {
-    "StartEvent_2 (MessageStartEvent)": "100%",
-    "CallActivity_4 (Set Message headers)": "100%",
-    "ParallelGateway_74 (Multicast)": "100%",
-    "ExclusiveGateway_80 (Router)": "100%",
-    "SequenceFlow_82 (SalesOrder branch)": "100%",
+    "StartEvent_2 (SOAP Inbound)": "100%",
+    "CallActivity_4 (Set Message headers & InputPayload)": "100%",
+    "ParallelGateway_74 (Parallel Multicast)": "100%",
+    "ExclusiveGateway_80 (Router Gateway)": "100%",
+    "SequenceFlow_82 (SalesOrder Route)": "100%",
     "CallActivity_102 (Message Mapping 1)": "100%",
-    "CallActivity_13 (Generic Headers SO)": "100%",
-    "EndEvent_2 (End SO)": "100%",
-    "SequenceFlow_113 (SO Return branch)": "100%",
-    "CallActivity_71 (Generic Headers SO Return)": "100%",
-    "EndEvent_9 (End SO Return)": "100%",
-    "SequenceFlow_110 (Default Escalation Route)": "100%",
+    "CallActivity_13 (Interface Generic Headers)": "100%",
+    "EndEvent_2 (SalesOrder Success End)": "100%",
+    "SequenceFlow_113 (SO Return Route)": "100%",
+    "CallActivity_71 (Interface Generic Headers)": "100%",
+    "EndEvent_9 (SO Return Success End)": "100%",
+    "SequenceFlow_110 (Default Route)": "100%",
     "EndEvent_11 (Escalation End)": "100%",
     "SubProcess_91 (Exception Subprocess)": "100%",
-    "CallActivity_97 (Read Payload from Property)": "100%",
+    "CallActivity_97 (Restore Body from InputPayload)": "100%",
     "CallActivity_100 (Log Payload Script)": "100%",
     "EndEvent_95 (Error End Event)": "100%",
-    "CallActivity_77 (Orphaned Groovy Script 2)": "0%",
-    "CallActivity_86 (Orphaned Content Modifier)": "0%",
+    "CallActivity_77 (Dangling Script Activity)": "0%",
+    "CallActivity_86 (Dangling Content Modifier)": "0%",
     "CallActivity_77 (Groovy Script 2)": "0%",
     "CallActivity_86 (Content Modifier)": "0%"
   },
   "uncovered_paths": [
-    "CallActivity_77 (GLOVIA_Conditioncheck_Salesorder_Create.groovy) has no incoming or outgoing SequenceFlow connections in the BPMN process definition.",
-    "CallActivity_86 (Content Modifier extracting OrganizationId) has no incoming or outgoing SequenceFlow connections in the BPMN process definition.",
+    "CallActivity_77 and CallActivity_86 have no incoming or outgoing sequence flows in the provided BPMN definition. They represent orphaned flow steps within Process_1 that cannot be reached by any message passing through StartEvent_2.",
     "Unreachable in the process: CallActivity_77 (Groovy Script 2); CallActivity_86 (Content Modifier). These elements have no sequence flow connecting them to the flow, so no test can exercise them."
   ],
   "coverage_recommendations": [
-    "Connect CallActivity_86 between CallActivity_4 and ParallelGateway_74 so that OrganizationId is extracted via XPath into headers for routing rules.",
-    "Connect CallActivity_77 between CallActivity_86 and ExclusiveGateway_80 to evaluate OrderCodeValid before the Router, allowing router conditions to evaluate ${header.OrderCodeValid} = 'true' instead of unlinked script logic.",
-    "Remove orphaned activities from the BPMN definitions if their logic was superseded by CallActivity_4 and externalized routing expressions {{Glovia_Route_SalesOrder}}."
+    "Achieved 100% test coverage across all connected runtime execution branches (SalesOrder route, SO Return route, Default Escalation route, and Exception Subprocess).",
+    "To cover CallActivity_77 and CallActivity_86, update the BPMN definition to connect SequenceFlow_108 into CallActivity_86 -> CallActivity_77 -> ParallelGateway_74, and introduce test cases validating OrderCodeValid header evaluation."
   ]
 }
